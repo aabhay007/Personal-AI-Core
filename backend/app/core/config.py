@@ -36,6 +36,29 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/personal_ai_core"
     DATABASE_CONNECT_TIMEOUT_SECONDS: int = 5
 
+    @field_validator("DATABASE_URL", mode="before")
+    @classmethod
+    def normalize_database_url(cls, v: str) -> str:
+        if isinstance(v, str):
+            # Normalize scheme: postgresql:// or postgres:// -> postgresql+asyncpg://
+            if v.startswith("postgres://"):
+                v = "postgresql+asyncpg://" + v[len("postgres://"):]
+            elif v.startswith("postgresql://") and not v.startswith("postgresql+"):
+                v = "postgresql+asyncpg://" + v[len("postgresql://"):]
+            # Normalize sslmode for asyncpg
+            if "sslmode=" in v:
+                v = v.replace("sslmode=require", "ssl=require").replace("sslmode=prefer", "ssl=prefer").replace("sslmode=disable", "ssl=disable")
+            # Strip channel_binding (libpq specific param that asyncpg handles internally)
+            if "&channel_binding=" in v:
+                import re
+                v = re.sub(r"&channel_binding=[^&]*", "", v)
+            elif "?channel_binding=" in v:
+                import re
+                v = re.sub(r"\?channel_binding=[^&]*(&)?", "?", v)
+                if v.endswith("?"):
+                    v = v[:-1]
+        return v
+
     # AI & LLM Provider Configuration
     GROQ_API_KEY: Optional[str] = None
     OPENAI_API_KEY: Optional[str] = None
