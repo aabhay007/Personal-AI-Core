@@ -1,4 +1,21 @@
 services:
+  caddy:
+    image: caddy:2.8-alpine
+    container_name: personal_ai_caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - backend
+      - frontend
+    networks:
+      - personal_ai_network
+
   backend:
     build:
       context: ../backend
@@ -8,10 +25,15 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - ENVIRONMENT=development
-      - DEBUG=true
+      - ENVIRONMENT=production
+      - DEBUG=false
       - DATABASE_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/personal_ai_core
-      - BACKEND_CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
+      - BACKEND_CORS_ORIGINS=http://localhost,http://localhost:3000,https://localhost
+      - SECRET_KEY=replace-with-secure-production-secret-key-32-chars
+      - DEFAULT_LLM_PROVIDER=groq
+      - DEFAULT_MODEL_NAME=llama-3.3-70b-versatile
+    volumes:
+      - storage_data:/app/storage
     depends_on:
       postgres:
         condition: service_healthy
@@ -32,6 +54,7 @@ services:
     ports:
       - "3000:3000"
     environment:
+      - NODE_ENV=production
       - NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
     depends_on:
       - backend
@@ -64,3 +87,6 @@ networks:
 
 volumes:
   postgres_data:
+  storage_data:
+  caddy_data:
+  caddy_config:

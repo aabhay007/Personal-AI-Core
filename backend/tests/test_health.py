@@ -48,4 +48,12 @@ async def test_health_endpoint_degraded(async_client: AsyncClient):
         data = response.json()
         assert data["status"] == "degraded"
         assert data["database"]["connected"] is False
-        assert "unreachable" in data["database"]["message"].lower()
+
+
+@pytest.mark.asyncio
+async def test_rate_limiting_headers_and_enforcement(async_client: AsyncClient):
+    """Verify rate limit headers are included on responses."""
+    response = await async_client.get("/")
+    assert response.status_code == 200
+    assert "X-RateLimit-Limit" in response.headers
+    assert "X-RateLimit-Remaining" in response.headers

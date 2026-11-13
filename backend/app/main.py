@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.core.logging import setup_logging
+from app.core.rate_limit import RateLimitMiddleware
 from app.api.v1 import api_router
 from app.api.v1.health import get_health_status
 from app.schemas.health import HealthResponse
@@ -37,6 +38,9 @@ if settings.BACKEND_CORS_ORIGINS:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+# Configure Rate Limiting Middleware
+app.add_middleware(RateLimitMiddleware)
 
 # Direct root health endpoint as specified in Master Plan Section 16
 app.add_api_route(
