@@ -1,7 +1,7 @@
 import { DocumentItem } from '@/types/document';
 import { getAccessToken } from './auth';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
+const API_BASE_URL = (process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000').replace(/\/+$/, '');
 
 function getAuthHeaders(isFormData: boolean = false): HeadersInit {
   const token = getAccessToken();

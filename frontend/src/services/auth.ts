@@ -1,6 +1,6 @@
 import { TokenResponse, User } from '@/types/auth';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
+const API_BASE_URL = (process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000').replace(/\/+$/, '');
 
 const ACCESS_TOKEN_KEY = 'ai_core_access_token';
 const REFRESH_TOKEN_KEY = 'ai_core_refresh_token';
