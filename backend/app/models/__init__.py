@@ -6,6 +6,7 @@ from app.models.tool import Tool, ToolExecution
 from app.models.document import Document, DocumentChunk
 from app.models.integration import Integration
 from app.models.code_repository import CodeRepository, RepositoryFile, RepositoryChunk
+from app.models.agent_task import AgentTask, AgentStep
 
 __all__ = [
     "User",
@@ -22,4 +23,6 @@ __all__ = [
     "CodeRepository",
     "RepositoryFile",
     "RepositoryChunk",
+    "AgentTask",
+    "AgentStep",
 ]

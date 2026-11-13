@@ -32,6 +32,7 @@ import {
   FileText,
   Database,
   Code2,
+  Workflow,
 } from 'lucide-react';
 
 const MODEL_OPTIONS = [
@@ -300,35 +301,47 @@ export default function ChatPage() {
               <span>New Conversation</span>
             </button>
 
-            <div className="grid grid-cols-4 gap-1 mb-2">
-              <Link
-                href="/documents"
-                className="py-1.5 px-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-[10px] font-medium transition-colors flex items-center justify-center gap-1 border border-slate-700/60 truncate"
-              >
-                <FileText className="h-3 w-3 text-indigo-400 shrink-0" />
-                <span className="truncate">Docs</span>
-              </Link>
-              <Link
-                href="/tools"
-                className="py-1.5 px-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-[10px] font-medium transition-colors flex items-center justify-center gap-1 border border-slate-700/60 truncate"
-              >
-                <Wrench className="h-3 w-3 text-indigo-400 shrink-0" />
-                <span className="truncate">Tools</span>
-              </Link>
-              <Link
-                href="/integrations"
-                className="py-1.5 px-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-[10px] font-medium transition-colors flex items-center justify-center gap-1 border border-slate-700/60 truncate"
-              >
-                <Database className="h-3 w-3 text-indigo-400 shrink-0" />
-                <span className="truncate">Data</span>
-              </Link>
-              <Link
-                href="/repositories"
-                className="py-1.5 px-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-[10px] font-medium transition-colors flex items-center justify-center gap-1 border border-slate-700/60 truncate"
-              >
-                <Code2 className="h-3 w-3 text-indigo-400 shrink-0" />
-                <span className="truncate">Repos</span>
-              </Link>
+            <div className="space-y-1 mb-2">
+              <div className="grid grid-cols-3 gap-1">
+                <Link
+                  href="/documents"
+                  className="py-1.5 px-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-[11px] font-medium transition-colors flex items-center justify-center gap-1 border border-slate-700/60"
+                >
+                  <FileText className="h-3 w-3 text-indigo-400 shrink-0" />
+                  <span>Docs</span>
+                </Link>
+                <Link
+                  href="/tools"
+                  className="py-1.5 px-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-[11px] font-medium transition-colors flex items-center justify-center gap-1 border border-slate-700/60"
+                >
+                  <Wrench className="h-3 w-3 text-indigo-400 shrink-0" />
+                  <span>Tools</span>
+                </Link>
+                <Link
+                  href="/integrations"
+                  className="py-1.5 px-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-[11px] font-medium transition-colors flex items-center justify-center gap-1 border border-slate-700/60"
+                >
+                  <Database className="h-3 w-3 text-indigo-400 shrink-0" />
+                  <span>Data</span>
+                </Link>
+              </div>
+
+              <div className="grid grid-cols-2 gap-1">
+                <Link
+                  href="/repositories"
+                  className="py-1.5 px-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-[11px] font-medium transition-colors flex items-center justify-center gap-1.5 border border-slate-700/60"
+                >
+                  <Code2 className="h-3 w-3 text-indigo-400 shrink-0" />
+                  <span>Repos</span>
+                </Link>
+                <Link
+                  href="/tasks"
+                  className="py-1.5 px-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-[11px] font-medium transition-colors flex items-center justify-center gap-1.5 border border-slate-700/60"
+                >
+                  <Workflow className="h-3 w-3 text-indigo-400 shrink-0" />
+                  <span>Tasks</span>
+                </Link>
+              </div>
             </div>
           </div>
 

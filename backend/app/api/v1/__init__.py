@@ -9,6 +9,7 @@ from app.api.v1.tools import router as tools_router
 from app.api.v1.documents import router as documents_router
 from app.api.v1.integrations import router as integrations_router
 from app.api.v1.repositories import router as repositories_router
+from app.api.v1.tasks import router as tasks_router
 
 api_router = APIRouter()
 api_router.include_router(health_router, tags=["Health"])
@@ -20,3 +21,4 @@ api_router.include_router(tools_router, tags=["Tools"])
 api_router.include_router(documents_router, tags=["Documents"])
 api_router.include_router(integrations_router, tags=["Integrations"])
 api_router.include_router(repositories_router, tags=["Repositories"])
+api_router.include_router(tasks_router, tags=["Tasks"])
