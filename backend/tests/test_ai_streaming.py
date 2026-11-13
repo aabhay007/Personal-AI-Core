@@ -60,7 +60,7 @@ async def test_chat_stream_success_and_persistence(async_client: AsyncClient):
         "workspace_id": ws_id,
         "title": "Groq Streaming Test",
         "model_provider": "groq",
-        "model_name": "llama-3.3-70b-versatile"
+        "model_name": "qwen/qwen3.8-27b"
     })
     conv_id = conv_res.json()["id"]
 
@@ -81,7 +81,7 @@ async def test_chat_stream_success_and_persistence(async_client: AsyncClient):
                 "conversation_id": conv_id,
                 "prompt": "Say hello to Groq!",
                 "provider": "groq",
-                "model": "llama-3.3-70b-versatile"
+                "model": "qwen3.8-27b"
             }
         )
         assert stream_res.status_code == 200

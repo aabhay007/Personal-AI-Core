@@ -36,7 +36,7 @@ import {
 } from 'lucide-react';
 
 const MODEL_OPTIONS = [
-  { provider: 'groq', model: 'llama-3.3-70b-versatile', label: 'Groq: Llama 3.3 70B (Fast & Free)' },
+  { provider: 'groq', model: 'qwen/qwen3.8-27b', label: 'Groq: Qwen 3.8 27B (Fast & Free)' },
   { provider: 'groq', model: 'llama-3.1-8b-instant', label: 'Groq: Llama 3.1 8B Instant (Ultra-fast)' },
   { provider: 'groq', model: 'mixtral-8x7b-32768', label: 'Groq: Mixtral 8x7B (32k Context)' },
   { provider: 'openai', model: 'gpt-4o', label: 'OpenAI: GPT-4o' },
@@ -61,7 +61,7 @@ export default function ChatPage() {
   const [inputValue, setInputValue] = useState('');
   const [loading, setLoading] = useState(true);
   const [streaming, setStreaming] = useState(false);
-  const [selectedModelKey, setSelectedModelKey] = useState('groq:llama-3.3-70b-versatile');
+  const [selectedModelKey, setSelectedModelKey] = useState('groq:qwen3.8-27b');
   const [streamError, setStreamError] = useState<string | null>(null);
   const [activeToolEvents, setActiveToolEvents] = useState<ToolEventItem[]>([]);
 

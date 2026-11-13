@@ -63,7 +63,7 @@ class Settings(BaseSettings):
     GROQ_API_KEY: Optional[str] = None
     OPENAI_API_KEY: Optional[str] = None
     DEFAULT_LLM_PROVIDER: str = "groq"
-    DEFAULT_MODEL_NAME: str = "llama-3.3-70b-versatile"
+    DEFAULT_MODEL_NAME: str = "qwen/qwen3.8-27b"
     MAX_CONTEXT_MESSAGES: int = 20
     MAX_TOKENS_PER_REQUEST: int = 4096
 

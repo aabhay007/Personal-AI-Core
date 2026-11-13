@@ -31,7 +31,7 @@ services:
       - BACKEND_CORS_ORIGINS=http://localhost,http://localhost:3000,https://localhost
       - SECRET_KEY=replace-with-secure-production-secret-key-32-chars
       - DEFAULT_LLM_PROVIDER=groq
-      - DEFAULT_MODEL_NAME=llama-3.3-70b-versatile
+      - DEFAULT_MODEL_NAME=qwen/qwen3.8-27b
     volumes:
       - storage_data:/app/storage
     depends_on:

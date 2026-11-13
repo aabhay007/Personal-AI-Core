@@ -34,7 +34,7 @@ async def test_multi_step_tool_orchestration_loop(
         "workspace_id": ws_id,
         "title": "Calculator Agent Test",
         "model_provider": "groq",
-        "model_name": "llama-3.3-70b-versatile"
+        "model_name": "qwen/qwen3.8-27b"
     })
     conv_id = conv_res.json()["id"]
 
@@ -74,7 +74,7 @@ async def test_multi_step_tool_orchestration_loop(
                 "conversation_id": conv_id,
                 "prompt": "What is 125 multiplied by 8?",
                 "provider": "groq",
-                "model": "llama-3.3-70b-versatile"
+                "model": "qwen3.8-27b"
             }
         )
         assert stream_res.status_code == 200

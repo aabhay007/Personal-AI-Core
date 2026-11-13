@@ -23,7 +23,7 @@ class GroqProvider(LLMProvider):
 
     @property
     def default_model(self) -> str:
-        return "llama-3.3-70b-versatile"
+        return "qwen/qwen3.8-27b"
 
     def _get_client(self) -> AsyncGroq:
         if not self.api_key:

@@ -59,7 +59,7 @@ DATABASE_CONNECT_TIMEOUT_SECONDS=10
 # AI Provider Configuration (Zero Paid APIs by default)
 GROQ_API_KEY=your_free_groq_api_key_here
 DEFAULT_LLM_PROVIDER=groq
-DEFAULT_MODEL_NAME=llama-3.3-70b-versatile
+DEFAULT_MODEL_NAME=qwen/qwen3.8-27b
 MAX_CONTEXT_MESSAGES=20
 MAX_TOKENS_PER_REQUEST=4096
 

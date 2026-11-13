@@ -31,7 +31,7 @@ export async function createConversation(
   workspaceId: string,
   title?: string,
   provider: string = 'groq',
-  model: string = 'llama-3.3-70b-versatile'
+  model: string = 'qwen/qwen3.8-27b'
 ): Promise<Conversation> {
   const res = await fetch(`${API_BASE_URL}/api/v1/conversations`, {
     method: 'POST',
