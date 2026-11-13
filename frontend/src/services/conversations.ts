@@ -73,12 +73,30 @@ export async function deleteConversation(conversationId: string): Promise<void> 
   if (!res.ok) throw new Error('Failed to delete conversation');
 }
 
+export interface ToolItem {
+  name: string;
+  description: string;
+  parameters: Record<string, any>;
+  requires_approval: boolean;
+  timeout_seconds: number;
+}
+
+export async function listTools(): Promise<ToolItem[]> {
+  const res = await fetch(`${API_BASE_URL}/api/v1/tools`, {
+    headers: getAuthHeaders(),
+  });
+  if (!res.ok) throw new Error('Failed to list tools');
+  return res.json();
+}
+
 export interface StreamChatParams {
   conversationId: string;
   prompt: string;
   provider?: string;
   model?: string;
   onDelta: (delta: string) => void;
+  onToolStart?: (data: { tool_name: string; arguments: any }) => void;
+  onToolResult?: (data: { tool_name: string; result: any }) => void;
   onComplete: (data: { message_id?: string; token_usage?: any }) => void;
   onError: (error: string) => void;
 }
@@ -142,6 +160,10 @@ export function streamChatMessage(params: StreamChatParams): () => void {
               const parsed = JSON.parse(dataStr);
               if (eventType === 'content_delta') {
                 params.onDelta(parsed.delta || '');
+              } else if (eventType === 'tool_start') {
+                params.onToolStart?.(parsed);
+              } else if (eventType === 'tool_result') {
+                params.onToolResult?.(parsed);
               } else if (eventType === 'message_complete') {
                 params.onComplete(parsed);
               } else if (eventType === 'error') {

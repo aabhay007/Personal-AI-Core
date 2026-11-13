@@ -113,6 +113,19 @@ class GroqProvider(LLMProvider):
                 delta_content = choice.delta.content or ""
                 finish_reason = choice.finish_reason
 
+                tool_calls_data = None
+                if getattr(choice.delta, "tool_calls", None):
+                    tool_calls_data = []
+                    for tc in choice.delta.tool_calls:
+                        func_name = tc.function.name if getattr(tc, "function", None) else None
+                        func_args = tc.function.arguments if getattr(tc, "function", None) else None
+                        tool_calls_data.append({
+                            "index": tc.index,
+                            "id": getattr(tc, "id", None),
+                            "name": func_name,
+                            "arguments": func_args,
+                        })
+
                 usage = None
                 if getattr(chunk, "x_groq", None) and getattr(chunk.x_groq, "usage", None):
                     u = chunk.x_groq.usage
@@ -125,7 +138,8 @@ class GroqProvider(LLMProvider):
                 yield LLMStreamChunk(
                     delta=delta_content,
                     finish_reason=finish_reason,
-                    token_usage=usage
+                    token_usage=usage,
+                    tool_calls=tool_calls_data
                 )
         except AuthenticationError as e:
             logger.error(f"Groq authentication error in stream: {e}")

@@ -112,6 +112,18 @@ class OpenAIProvider(LLMProvider):
                     delta_content = choice.delta.content or ""
                     finish_reason = choice.finish_reason
 
+                    if getattr(choice.delta, "tool_calls", None):
+                        tool_calls_data = []
+                        for tc in choice.delta.tool_calls:
+                            func_name = tc.function.name if getattr(tc, "function", None) else None
+                            func_args = tc.function.arguments if getattr(tc, "function", None) else None
+                            tool_calls_data.append({
+                                "index": tc.index,
+                                "id": getattr(tc, "id", None),
+                                "name": func_name,
+                                "arguments": func_args,
+                            })
+
                 if getattr(chunk, "usage", None):
                     u = chunk.usage
                     usage = TokenUsage(
@@ -123,7 +135,8 @@ class OpenAIProvider(LLMProvider):
                 yield LLMStreamChunk(
                     delta=delta_content,
                     finish_reason=finish_reason,
-                    token_usage=usage
+                    token_usage=usage,
+                    tool_calls=tool_calls_data
                 )
         except AuthenticationError as e:
             raise ValueError("Invalid OpenAI API key.") from e

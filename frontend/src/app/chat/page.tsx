@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { User, Workspace, Conversation, Message } from '@/types/auth';
 import { getMe, logout } from '@/services/auth';
 import {
@@ -26,6 +27,8 @@ import {
   Square,
   Cpu,
   AlertCircle,
+  Wrench,
+  CheckCircle2,
 } from 'lucide-react';
 
 const MODEL_OPTIONS = [
@@ -35,6 +38,13 @@ const MODEL_OPTIONS = [
   { provider: 'openai', model: 'gpt-4o', label: 'OpenAI: GPT-4o' },
   { provider: 'openai', model: 'gpt-4o-mini', label: 'OpenAI: GPT-4o Mini' },
 ];
+
+interface ToolEventItem {
+  tool_name: string;
+  arguments?: any;
+  result?: any;
+  status: 'running' | 'done';
+}
 
 export default function ChatPage() {
   const router = useRouter();
@@ -49,6 +59,7 @@ export default function ChatPage() {
   const [streaming, setStreaming] = useState(false);
   const [selectedModelKey, setSelectedModelKey] = useState('groq:llama-3.3-70b-versatile');
   const [streamError, setStreamError] = useState<string | null>(null);
+  const [activeToolEvents, setActiveToolEvents] = useState<ToolEventItem[]>([]);
 
   const abortStreamRef = useRef<(() => void) | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -97,7 +108,7 @@ export default function ChatPage() {
   // Scroll to bottom when messages update
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, streaming]);
+  }, [messages, streaming, activeToolEvents]);
 
   const selectConversation = async (conversationId: string) => {
     if (streaming && abortStreamRef.current) {
@@ -105,11 +116,11 @@ export default function ChatPage() {
       setStreaming(false);
     }
     setStreamError(null);
+    setActiveToolEvents([]);
     try {
       const details = await getConversation(conversationId);
       setActiveConversation(details);
       setMessages(details.messages || []);
-      // Sync model selector with conversation settings if present
       if (details.model_provider && details.model_name) {
         setSelectedModelKey(`${details.model_provider}:${details.model_name}`);
       }
@@ -127,6 +138,7 @@ export default function ChatPage() {
       setActiveConversation(newConv);
       setMessages([]);
       setStreamError(null);
+      setActiveToolEvents([]);
     } catch (err) {
       console.error('Failed to create conversation', err);
     }
@@ -160,6 +172,7 @@ export default function ChatPage() {
     setInputValue('');
     setStreamError(null);
     setStreaming(true);
+    setActiveToolEvents([]);
 
     const [provider, model] = selectedModelKey.split(':');
 
@@ -194,6 +207,19 @@ export default function ChatPage() {
         setMessages((prev) =>
           prev.map((m) =>
             m.id === tempAssistantId ? { ...m, content: m.content + delta } : m
+          )
+        );
+      },
+      onToolStart: (data) => {
+        setActiveToolEvents((prev) => [
+          ...prev,
+          { tool_name: data.tool_name, arguments: data.arguments, status: 'running' },
+        ]);
+      },
+      onToolResult: (data) => {
+        setActiveToolEvents((prev) =>
+          prev.map((t) =>
+            t.tool_name === data.tool_name ? { ...t, result: data.result, status: 'done' } : t
           )
         );
       },
@@ -265,15 +291,23 @@ export default function ChatPage() {
 
             <button
               onClick={handleNewConversation}
-              className="w-full py-2 px-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-medium transition-colors flex items-center justify-center gap-2 shadow-sm cursor-pointer"
+              className="w-full py-2 px-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-medium transition-colors flex items-center justify-center gap-2 shadow-sm cursor-pointer mb-2"
             >
               <Plus className="h-3.5 w-3.5" />
               <span>New Conversation</span>
             </button>
+
+            <Link
+              href="/tools"
+              className="w-full py-1.5 px-3 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-medium transition-colors flex items-center justify-center gap-1.5 border border-slate-700/60"
+            >
+              <Wrench className="h-3 w-3 text-indigo-400" />
+              <span>Explore Tools</span>
+            </Link>
           </div>
 
           {/* Conversation list */}
-          <div className="p-2 space-y-1 overflow-y-auto max-h-[calc(100vh-210px)]">
+          <div className="p-2 space-y-1 overflow-y-auto max-h-[calc(100vh-250px)]">
             <p className="text-[11px] font-medium text-slate-400 px-3 py-1.5 uppercase tracking-wider">
               Conversations
             </p>
@@ -344,7 +378,7 @@ export default function ChatPage() {
                     Workspace: <strong className="text-slate-300 font-medium">{activeWorkspace?.name}</strong>
                   </span>
                   <span className="text-slate-600">•</span>
-                  <span className="text-[11px] text-emerald-400">SSE Streaming Active</span>
+                  <span className="text-[11px] text-indigo-400 font-medium">Tools Enabled (Calculator, DateTime)</span>
                 </div>
               </div>
 
@@ -366,7 +400,7 @@ export default function ChatPage() {
               </div>
             </div>
 
-            {/* Error Banner if any */}
+            {/* Error Banner */}
             {streamError && (
               <div className="px-6 py-3 bg-rose-950/40 border-b border-rose-800/60 text-xs text-rose-300 flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -387,15 +421,18 @@ export default function ChatPage() {
               {messages.length === 0 ? (
                 <div className="h-full flex flex-col items-center justify-center text-center text-slate-500 max-w-md mx-auto">
                   <Bot className="h-10 w-10 text-slate-600 mb-3" />
-                  <p className="text-sm font-medium text-slate-300">Start a Conversation</p>
+                  <p className="text-sm font-medium text-slate-300">Tool-Augmented AI Assistant</p>
                   <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
-                    Powered by Groq high-speed Llama 3.3 / Llama 3.1 models. Responses stream in real-time and persist in your Neon database.
+                    Try asking: <code className="text-indigo-400">&quot;What is 45 * 128?&quot;</code> or{' '}
+                    <code className="text-indigo-400">&quot;What is the current time in Tokyo?&quot;</code>
                   </p>
                 </div>
               ) : (
-                messages.map((msg) => {
+                messages.map((msg, index) => {
                   const isUser = msg.role === 'user';
-                  const isCurrentStreaming = streaming && msg.role === 'assistant' && !msg.content;
+                  const isLast = index === messages.length - 1;
+                  const isCurrentStreaming = streaming && isLast && msg.role === 'assistant' && !msg.content;
+
                   return (
                     <div
                       key={msg.id}
@@ -417,12 +454,44 @@ export default function ChatPage() {
                             : 'bg-slate-900 border border-slate-800 text-slate-200 shadow-sm'
                         }`}
                       >
+                        {/* Tool Execution Badges during live streaming */}
+                        {isLast && activeToolEvents.length > 0 && (
+                          <div className="space-y-1.5 mb-2.5 pb-2.5 border-b border-slate-800">
+                            {activeToolEvents.map((t, idx) => (
+                              <div
+                                key={idx}
+                                className="flex items-center gap-2 px-2.5 py-1.5 rounded-md bg-slate-950/80 border border-slate-800 font-mono text-[11px]"
+                              >
+                                {t.status === 'running' ? (
+                                  <>
+                                    <Loader2 className="h-3 w-3 animate-spin text-indigo-400" />
+                                    <span className="text-indigo-300">
+                                      Invoking tool: <strong className="text-white">{t.tool_name}</strong>
+                                      ({JSON.stringify(t.arguments || {})})
+                                    </span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <CheckCircle2 className="h-3 w-3 text-emerald-400" />
+                                    <span className="text-slate-300">
+                                      {t.tool_name} completed:{' '}
+                                      <span className="text-emerald-400">
+                                        {JSON.stringify(t.result?.result || t.result || '')}
+                                      </span>
+                                    </span>
+                                  </>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
                         {msg.content ? (
                           <p className="whitespace-pre-wrap">{msg.content}</p>
                         ) : isCurrentStreaming ? (
                           <div className="flex items-center gap-1.5 py-1 text-slate-400">
                             <span className="h-1.5 w-1.5 rounded-full bg-indigo-400 animate-pulse"></span>
-                            <span className="text-[11px]">Thinking...</span>
+                            <span className="text-[11px]">Thinking & computing...</span>
                           </div>
                         ) : null}
 
@@ -454,7 +523,7 @@ export default function ChatPage() {
                   type="text"
                   value={inputValue}
                   onChange={(e) => setInputValue(e.target.value)}
-                  placeholder="Ask anything (e.g. explain the architecture, write a FastAPI route)..."
+                  placeholder="Ask a question or request a calculation (e.g. 'What is 15% of 850?')..."
                   disabled={streaming}
                   className="flex-1 bg-slate-900 border border-slate-800 rounded-lg px-4 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition-colors disabled:opacity-50"
                 />
