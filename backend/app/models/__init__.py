@@ -3,6 +3,7 @@ from app.models.user import User, RefreshToken
 from app.models.workspace import Workspace, WorkspaceMember
 from app.models.conversation import Conversation, Message
 from app.models.tool import Tool, ToolExecution
+from app.models.document import Document, DocumentChunk
 
 __all__ = [
     "User",
@@ -13,4 +14,6 @@ __all__ = [
     "Message",
     "Tool",
     "ToolExecution",
+    "Document",
+    "DocumentChunk",
 ]

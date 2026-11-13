@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.tools.base import BaseTool
 from app.tools.calculator import CalculatorTool
 from app.tools.datetime_tool import DateTimeTool
+from app.tools.document_search import DocumentSearchTool
 from app.models.tool import ToolExecution
 
 logger = logging.getLogger(__name__)
@@ -23,6 +24,7 @@ class ToolRegistry:
         # Register core native platform tools
         self.register(CalculatorTool())
         self.register(DateTimeTool())
+        self.register(DocumentSearchTool())
 
     def register(self, tool: BaseTool) -> None:
         """Register a tool instance in the registry."""
@@ -62,13 +64,20 @@ class ToolRegistry:
         error_message = None
         result = None
 
+        # Automatically supply contextual workspace_id if tool expects it and it's missing
+        if name == "document_search" and workspace_id and not arguments.get("workspace_id"):
+            arguments["workspace_id"] = str(workspace_id)
+
         try:
             # 1. Strict Pydantic argument validation
             validated_args = tool.args_schema(**arguments)
+            exec_kwargs = validated_args.model_dump()
+            if name == "document_search":
+                exec_kwargs["db"] = db
 
             # 2. Execute with strict timeout enforcement
             result = await asyncio.wait_for(
-                tool.execute(**validated_args.model_dump()),
+                tool.execute(**exec_kwargs),
                 timeout=tool.timeout_seconds
             )
 

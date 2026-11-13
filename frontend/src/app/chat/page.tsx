@@ -29,6 +29,7 @@ import {
   AlertCircle,
   Wrench,
   CheckCircle2,
+  FileText,
 } from 'lucide-react';
 
 const MODEL_OPTIONS = [
@@ -297,13 +298,22 @@ export default function ChatPage() {
               <span>New Conversation</span>
             </button>
 
-            <Link
-              href="/tools"
-              className="w-full py-1.5 px-3 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-medium transition-colors flex items-center justify-center gap-1.5 border border-slate-700/60"
-            >
-              <Wrench className="h-3 w-3 text-indigo-400" />
-              <span>Explore Tools</span>
-            </Link>
+            <div className="grid grid-cols-2 gap-1.5 mb-2">
+              <Link
+                href="/documents"
+                className="py-1.5 px-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-medium transition-colors flex items-center justify-center gap-1.5 border border-slate-700/60"
+              >
+                <FileText className="h-3 w-3 text-indigo-400" />
+                <span>Documents</span>
+              </Link>
+              <Link
+                href="/tools"
+                className="py-1.5 px-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-medium transition-colors flex items-center justify-center gap-1.5 border border-slate-700/60"
+              >
+                <Wrench className="h-3 w-3 text-indigo-400" />
+                <span>Tools</span>
+              </Link>
+            </div>
           </div>
 
           {/* Conversation list */}
