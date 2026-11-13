@@ -1,0 +1,138 @@
+"""Groq Cloud LLM Provider implementation."""
+import logging
+from typing import AsyncGenerator, Dict, List, Optional, Any
+from groq import AsyncGroq, APIError, RateLimitError, AuthenticationError
+from app.ai.providers.base import LLMProvider, LLMResponse, LLMStreamChunk, TokenUsage
+from app.core.config import settings
+
+logger = logging.getLogger(__name__)
+
+
+class GroqProvider(LLMProvider):
+    """LLM Provider targeting Groq high-speed inference (Llama 3.3, Llama 3.1, Mixtral)."""
+
+    def __init__(self, api_key: Optional[str] = None):
+        self.api_key = api_key or settings.GROQ_API_KEY
+        if not self.api_key:
+            logger.warning("GROQ_API_KEY is not configured in settings or environment.")
+        self._client: Optional[AsyncGroq] = None
+
+    @property
+    def provider_name(self) -> str:
+        return "groq"
+
+    @property
+    def default_model(self) -> str:
+        return "llama-3.3-70b-versatile"
+
+    def _get_client(self) -> AsyncGroq:
+        if not self.api_key:
+            raise ValueError(
+                "Groq API key is missing. Please set GROQ_API_KEY in your backend/.env file."
+            )
+        if self._client is None:
+            self._client = AsyncGroq(api_key=self.api_key)
+        return self._client
+
+    async def generate(
+        self,
+        messages: List[Dict[str, Any]],
+        tools: Optional[List[Dict[str, Any]]] = None,
+        model: Optional[str] = None,
+        temperature: float = 0.7,
+        max_tokens: Optional[int] = None
+    ) -> LLMResponse:
+        client = self._get_client()
+        target_model = model or self.default_model
+
+        kwargs: Dict[str, Any] = {
+            "model": target_model,
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens or settings.MAX_TOKENS_PER_REQUEST,
+        }
+        if tools:
+            kwargs["tools"] = tools
+
+        try:
+            response = await client.chat.completions.create(**kwargs)
+            choice = response.choices[0]
+
+            usage = None
+            if response.usage:
+                usage = TokenUsage(
+                    prompt_tokens=response.usage.prompt_tokens,
+                    completion_tokens=response.usage.completion_tokens,
+                    total_tokens=response.usage.total_tokens,
+                )
+
+            return LLMResponse(
+                content=choice.message.content or "",
+                model=target_model,
+                provider=self.provider_name,
+                token_usage=usage,
+                finish_reason=choice.finish_reason,
+            )
+        except AuthenticationError as e:
+            logger.error(f"Groq authentication error: {e}")
+            raise ValueError("Invalid Groq API key.") from e
+        except RateLimitError as e:
+            logger.error(f"Groq rate limit reached: {e}")
+            raise RuntimeError("Groq rate limit exceeded. Please retry in a moment.") from e
+        except APIError as e:
+            logger.error(f"Groq API error: {e}")
+            raise RuntimeError(f"Groq API returned an error: {e.message}") from e
+
+    async def stream(
+        self,
+        messages: List[Dict[str, Any]],
+        tools: Optional[List[Dict[str, Any]]] = None,
+        model: Optional[str] = None,
+        temperature: float = 0.7,
+        max_tokens: Optional[int] = None
+    ) -> AsyncGenerator[LLMStreamChunk, None]:
+        client = self._get_client()
+        target_model = model or self.default_model
+
+        kwargs: Dict[str, Any] = {
+            "model": target_model,
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens or settings.MAX_TOKENS_PER_REQUEST,
+            "stream": True,
+        }
+        if tools:
+            kwargs["tools"] = tools
+
+        try:
+            stream_resp = await client.chat.completions.create(**kwargs)
+            async for chunk in stream_resp:
+                if not chunk.choices:
+                    continue
+                choice = chunk.choices[0]
+                delta_content = choice.delta.content or ""
+                finish_reason = choice.finish_reason
+
+                usage = None
+                if getattr(chunk, "x_groq", None) and getattr(chunk.x_groq, "usage", None):
+                    u = chunk.x_groq.usage
+                    usage = TokenUsage(
+                        prompt_tokens=getattr(u, "prompt_tokens", 0),
+                        completion_tokens=getattr(u, "completion_tokens", 0),
+                        total_tokens=getattr(u, "total_tokens", 0)
+                    )
+
+                yield LLMStreamChunk(
+                    delta=delta_content,
+                    finish_reason=finish_reason,
+                    token_usage=usage
+                )
+        except AuthenticationError as e:
+            logger.error(f"Groq authentication error in stream: {e}")
+            raise ValueError("Invalid Groq API key.") from e
+        except RateLimitError as e:
+            logger.error(f"Groq rate limit in stream: {e}")
+            raise RuntimeError("Groq rate limit exceeded.") from e
+        except APIError as e:
+            logger.error(f"Groq stream error: {e}")
+            raise RuntimeError(f"Groq error: {e.message}") from e

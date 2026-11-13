@@ -6,8 +6,8 @@ This roadmap tracks the phased development of the **Personal AI Core** platform 
 |---|---|---|---|
 | **Phase 0** | **Project Foundation** | **Completed** | Monorepo layout, Next.js, FastAPI, Docker Compose, Alembic, tests |
 | **Phase 1** | **Authentication & Conversations** | **Completed** | Argon2id auth, rotating JWTs, workspaces, conversation persistence |
-| **Phase 2** | **LLM Integration & Streaming** | **Next** | LLM provider abstraction, OpenAI SDK, SSE streaming, token tracking |
-| **Phase 3** | **Tool Calling System** | Planned | Tool registry, schemas, execution sandbox, audit logs, timeout limits |
+| **Phase 2** | **LLM Integration & Streaming** | **Completed** | LLM provider abstraction, Groq (free tier) + OpenAI SDK, SSE streaming |
+| **Phase 3** | **Tool Calling System** | **Next** | Tool registry, schemas, execution sandbox, audit logs, timeout limits |
 | **Phase 4** | **Knowledge Engine & RAG** | Planned | Document ingestion (PDF/TXT/MD), chunking, embeddings, pgvector |
 | **Phase 5** | **Database Integrations** | Planned | Read-only connectors, schema inspection, parameterized query tools |
 | **Phase 6** | **Developer Assistant** | Planned | GitHub integration, repo indexing, code search, architectural Q&A |

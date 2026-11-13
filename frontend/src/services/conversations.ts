@@ -27,15 +27,20 @@ export async function listConversations(workspaceId: string): Promise<Conversati
   return res.json();
 }
 
-export async function createConversation(workspaceId: string, title?: string): Promise<Conversation> {
+export async function createConversation(
+  workspaceId: string,
+  title?: string,
+  provider: string = 'groq',
+  model: string = 'llama-3.3-70b-versatile'
+): Promise<Conversation> {
   const res = await fetch(`${API_BASE_URL}/api/v1/conversations`, {
     method: 'POST',
     headers: getAuthHeaders(),
     body: JSON.stringify({
       workspace_id: workspaceId,
       title: title || 'New Conversation',
-      model_provider: 'openai',
-      model_name: 'gpt-4o',
+      model_provider: provider,
+      model_name: model,
     }),
   });
   if (!res.ok) throw new Error('Failed to create conversation');
@@ -66,4 +71,96 @@ export async function deleteConversation(conversationId: string): Promise<void> 
     headers: getAuthHeaders(),
   });
   if (!res.ok) throw new Error('Failed to delete conversation');
+}
+
+export interface StreamChatParams {
+  conversationId: string;
+  prompt: string;
+  provider?: string;
+  model?: string;
+  onDelta: (delta: string) => void;
+  onComplete: (data: { message_id?: string; token_usage?: any }) => void;
+  onError: (error: string) => void;
+}
+
+export function streamChatMessage(params: StreamChatParams): () => void {
+  const controller = new AbortController();
+
+  (async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/v1/chat/stream`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          conversation_id: params.conversationId,
+          prompt: params.prompt,
+          provider: params.provider,
+          model: params.model,
+        }),
+        signal: controller.signal,
+      });
+
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({ detail: res.statusText }));
+        params.onError(error.detail || 'Streaming failed');
+        return;
+      }
+
+      if (!res.body) {
+        params.onError('ReadableStream not supported by backend response');
+        return;
+      }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder('utf-8');
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const events = buffer.split('\n\n');
+        buffer = events.pop() || '';
+
+        for (const eventBlock of events) {
+          if (!eventBlock.trim()) continue;
+          const lines = eventBlock.split('\n');
+          let eventType = '';
+          let dataStr = '';
+
+          for (const line of lines) {
+            if (line.startsWith('event: ')) {
+              eventType = line.slice(7).trim();
+            } else if (line.startsWith('data: ')) {
+              dataStr = line.slice(6).trim();
+            }
+          }
+
+          if (eventType && dataStr) {
+            try {
+              const parsed = JSON.parse(dataStr);
+              if (eventType === 'content_delta') {
+                params.onDelta(parsed.delta || '');
+              } else if (eventType === 'message_complete') {
+                params.onComplete(parsed);
+              } else if (eventType === 'error') {
+                params.onError(parsed.error || 'Server error during stream');
+              }
+            } catch (err) {
+              console.error('Error parsing SSE event payload', err);
+            }
+          }
+        }
+      }
+    } catch (err: unknown) {
+      if (err instanceof Error && err.name === 'AbortError') {
+        // Stream aborted by user
+        return;
+      }
+      params.onError(err instanceof Error ? err.message : 'Unknown streaming error');
+    }
+  })();
+
+  return () => controller.abort();
 }

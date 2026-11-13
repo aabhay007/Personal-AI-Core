@@ -20,6 +20,7 @@ from app.schemas.conversation import (
     ConversationResponse,
     ConversationDetailResponse,
 )
+from app.schemas.chat import ChatStreamRequest
 
 __all__ = [
     "HealthResponse",

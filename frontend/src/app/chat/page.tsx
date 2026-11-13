@@ -9,8 +9,8 @@ import {
   listConversations,
   createConversation,
   getConversation,
-  addMessage,
   deleteConversation,
+  streamChatMessage,
 } from '@/services/conversations';
 import {
   MessageSquare,
@@ -23,7 +23,18 @@ import {
   User as UserIcon,
   Loader2,
   Sparkles,
+  Square,
+  Cpu,
+  AlertCircle,
 } from 'lucide-react';
+
+const MODEL_OPTIONS = [
+  { provider: 'groq', model: 'llama-3.3-70b-versatile', label: 'Groq: Llama 3.3 70B (Fast & Free)' },
+  { provider: 'groq', model: 'llama-3.1-8b-instant', label: 'Groq: Llama 3.1 8B Instant (Ultra-fast)' },
+  { provider: 'groq', model: 'mixtral-8x7b-32768', label: 'Groq: Mixtral 8x7B (32k Context)' },
+  { provider: 'openai', model: 'gpt-4o', label: 'OpenAI: GPT-4o' },
+  { provider: 'openai', model: 'gpt-4o-mini', label: 'OpenAI: GPT-4o Mini' },
+];
 
 export default function ChatPage() {
   const router = useRouter();
@@ -35,7 +46,11 @@ export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [loading, setLoading] = useState(true);
-  const [sending, setSending] = useState(false);
+  const [streaming, setStreaming] = useState(false);
+  const [selectedModelKey, setSelectedModelKey] = useState('groq:llama-3.3-70b-versatile');
+  const [streamError, setStreamError] = useState<string | null>(null);
+
+  const abortStreamRef = useRef<(() => void) | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Initial authentication & workspace loading
@@ -79,16 +94,25 @@ export default function ChatPage() {
     loadConversations();
   }, [activeWorkspace]);
 
-  // Scroll to bottom when messages change
+  // Scroll to bottom when messages update
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  }, [messages, streaming]);
 
   const selectConversation = async (conversationId: string) => {
+    if (streaming && abortStreamRef.current) {
+      abortStreamRef.current();
+      setStreaming(false);
+    }
+    setStreamError(null);
     try {
       const details = await getConversation(conversationId);
       setActiveConversation(details);
       setMessages(details.messages || []);
+      // Sync model selector with conversation settings if present
+      if (details.model_provider && details.model_name) {
+        setSelectedModelKey(`${details.model_provider}:${details.model_name}`);
+      }
     } catch (err) {
       console.error('Failed to select conversation', err);
     }
@@ -96,11 +120,13 @@ export default function ChatPage() {
 
   const handleNewConversation = async () => {
     if (!activeWorkspace) return;
+    const [provider, model] = selectedModelKey.split(':');
     try {
-      const newConv = await createConversation(activeWorkspace.id, 'New Conversation');
+      const newConv = await createConversation(activeWorkspace.id, 'New Conversation', provider, model);
       setConversations([newConv, ...conversations]);
       setActiveConversation(newConv);
       setMessages([]);
+      setStreamError(null);
     } catch (err) {
       console.error('Failed to create conversation', err);
     }
@@ -126,31 +152,84 @@ export default function ChatPage() {
     }
   };
 
-  const handleSendMessage = async (e: React.FormEvent) => {
+  const handleSendMessage = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!inputValue.trim() || !activeConversation || sending) return;
+    if (!inputValue.trim() || !activeConversation || streaming) return;
 
     const userText = inputValue.trim();
     setInputValue('');
-    setSending(true);
+    setStreamError(null);
+    setStreaming(true);
 
-    try {
-      // 1. Persist user message
-      const userMsg = await addMessage(activeConversation.id, 'user', userText);
-      setMessages((prev) => [...prev, userMsg]);
+    const [provider, model] = selectedModelKey.split(':');
 
-      // 2. Persist assistant confirmation (Phase 1 verification response)
-      const assistantMsg = await addMessage(
-        activeConversation.id,
-        'assistant',
-        `[Phase 1 Active] Received and persisted: "${userText}". Full LLM streaming orchestration activates in Phase 2.`
-      );
-      setMessages((prev) => [...prev, assistantMsg]);
-    } catch (err) {
-      console.error('Failed to send message', err);
-    } finally {
-      setSending(false);
+    // 1. Optimistically display user message
+    const tempUserMsg: Message = {
+      id: `temp-user-${Date.now()}`,
+      conversation_id: activeConversation.id,
+      role: 'user',
+      content: userText,
+      created_at: new Date().toISOString(),
+    };
+
+    // 2. Optimistically prepare placeholder assistant message
+    const tempAssistantId = `temp-assistant-${Date.now()}`;
+    const tempAssistantMsg: Message = {
+      id: tempAssistantId,
+      conversation_id: activeConversation.id,
+      role: 'assistant',
+      content: '',
+      created_at: new Date().toISOString(),
+    };
+
+    setMessages((prev) => [...prev, tempUserMsg, tempAssistantMsg]);
+
+    // 3. Initiate SSE stream
+    const cancel = streamChatMessage({
+      conversationId: activeConversation.id,
+      prompt: userText,
+      provider,
+      model,
+      onDelta: (delta: string) => {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === tempAssistantId ? { ...m, content: m.content + delta } : m
+          )
+        );
+      },
+      onComplete: (data) => {
+        setStreaming(false);
+        abortStreamRef.current = null;
+        if (data.message_id) {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === tempAssistantId
+                ? {
+                    ...m,
+                    id: data.message_id!,
+                    token_usage: data.token_usage,
+                  }
+                : m
+            )
+          );
+        }
+      },
+      onError: (err: string) => {
+        setStreaming(false);
+        abortStreamRef.current = null;
+        setStreamError(err);
+      },
+    });
+
+    abortStreamRef.current = cancel;
+  };
+
+  const handleStopGeneration = () => {
+    if (abortStreamRef.current) {
+      abortStreamRef.current();
+      abortStreamRef.current = null;
     }
+    setStreaming(false);
   };
 
   const handleLogout = async () => {
@@ -180,7 +259,7 @@ export default function ChatPage() {
               </div>
               <div className="truncate">
                 <p className="text-xs font-semibold text-white truncate">{activeWorkspace?.name}</p>
-                <p className="text-[10px] text-slate-400">Workspace Isolation Enabled</p>
+                <p className="text-[10px] text-slate-400">Personal AI Core • V1</p>
               </div>
             </div>
 
@@ -256,36 +335,67 @@ export default function ChatPage() {
       <main className="flex-1 flex flex-col h-full bg-slate-950">
         {activeConversation ? (
           <>
-            {/* Conversation Header */}
-            <div className="px-6 py-3.5 border-b border-slate-800 bg-slate-900/50 flex items-center justify-between">
+            {/* Conversation Header & Model Selector */}
+            <div className="px-6 py-3 border-b border-slate-800 bg-slate-900/50 flex items-center justify-between">
               <div>
                 <h2 className="text-sm font-semibold text-white">{activeConversation.title}</h2>
                 <div className="flex items-center gap-2 mt-0.5">
-                  <span className="inline-flex items-center gap-1 text-[11px] text-slate-400">
-                    <Sparkles className="h-3 w-3 text-indigo-400" />
-                    {activeConversation.model_provider} / {activeConversation.model_name}
+                  <span className="text-[11px] text-slate-400">
+                    Workspace: <strong className="text-slate-300 font-medium">{activeWorkspace?.name}</strong>
                   </span>
                   <span className="text-slate-600">•</span>
-                  <span className="text-[11px] text-slate-500">
-                    Workspace: {activeWorkspace?.name}
-                  </span>
+                  <span className="text-[11px] text-emerald-400">SSE Streaming Active</span>
                 </div>
+              </div>
+
+              {/* Model Selector */}
+              <div className="flex items-center gap-2">
+                <Cpu className="h-4 w-4 text-slate-400" />
+                <select
+                  value={selectedModelKey}
+                  onChange={(e) => setSelectedModelKey(e.target.value)}
+                  disabled={streaming}
+                  className="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 cursor-pointer"
+                >
+                  {MODEL_OPTIONS.map((opt) => (
+                    <option key={`${opt.provider}:${opt.model}`} value={`${opt.provider}:${opt.model}`}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
 
+            {/* Error Banner if any */}
+            {streamError && (
+              <div className="px-6 py-3 bg-rose-950/40 border-b border-rose-800/60 text-xs text-rose-300 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <AlertCircle className="h-4 w-4 shrink-0 text-rose-400" />
+                  <span>{streamError}</span>
+                </div>
+                <button
+                  onClick={() => setStreamError(null)}
+                  className="text-slate-400 hover:text-slate-200 text-xs underline cursor-pointer"
+                >
+                  Dismiss
+                </button>
+              </div>
+            )}
+
             {/* Messages Scroll Area */}
-            <div className="flex-1 overflow-y-auto p-6 space-y-4">
+            <div className="flex-1 overflow-y-auto p-6 space-y-5">
               {messages.length === 0 ? (
-                <div className="h-full flex flex-col items-center justify-center text-center text-slate-500 max-w-sm mx-auto">
+                <div className="h-full flex flex-col items-center justify-center text-center text-slate-500 max-w-md mx-auto">
                   <Bot className="h-10 w-10 text-slate-600 mb-3" />
-                  <p className="text-sm font-medium text-slate-300">Conversation Initialized</p>
-                  <p className="text-xs text-slate-500 mt-1">
-                    Send a message below. Conversations and messages are persisted in Neon PostgreSQL.
+                  <p className="text-sm font-medium text-slate-300">Start a Conversation</p>
+                  <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
+                    Powered by Groq high-speed Llama 3.3 / Llama 3.1 models. Responses stream in real-time and persist in your Neon database.
                   </p>
                 </div>
               ) : (
                 messages.map((msg) => {
                   const isUser = msg.role === 'user';
+                  const isCurrentStreaming = streaming && msg.role === 'assistant' && !msg.content;
                   return (
                     <div
                       key={msg.id}
@@ -301,16 +411,34 @@ export default function ChatPage() {
                         {isUser ? <UserIcon className="h-3.5 w-3.5" /> : <Bot className="h-3.5 w-3.5" />}
                       </div>
                       <div
-                        className={`rounded-xl px-4 py-2.5 text-xs leading-relaxed max-w-xl ${
+                        className={`rounded-xl px-4 py-3 text-xs leading-relaxed max-w-xl ${
                           isUser
                             ? 'bg-indigo-600 text-white'
-                            : 'bg-slate-900 border border-slate-800 text-slate-200'
+                            : 'bg-slate-900 border border-slate-800 text-slate-200 shadow-sm'
                         }`}
                       >
-                        <p className="whitespace-pre-wrap">{msg.content}</p>
-                        <span className="block text-[9px] text-slate-400 mt-1.5 opacity-75">
-                          {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                        </span>
+                        {msg.content ? (
+                          <p className="whitespace-pre-wrap">{msg.content}</p>
+                        ) : isCurrentStreaming ? (
+                          <div className="flex items-center gap-1.5 py-1 text-slate-400">
+                            <span className="h-1.5 w-1.5 rounded-full bg-indigo-400 animate-pulse"></span>
+                            <span className="text-[11px]">Thinking...</span>
+                          </div>
+                        ) : null}
+
+                        <div className="flex items-center justify-between gap-3 mt-2 text-[9px] text-slate-500 opacity-75">
+                          <span>
+                            {new Date(msg.created_at).toLocaleTimeString([], {
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })}
+                          </span>
+                          {msg.token_usage && typeof msg.token_usage === 'object' && 'total_tokens' in msg.token_usage && (
+                            <span className="font-mono text-indigo-400/80">
+                              Tokens: {String(msg.token_usage.total_tokens)}
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
                   );
@@ -326,18 +454,29 @@ export default function ChatPage() {
                   type="text"
                   value={inputValue}
                   onChange={(e) => setInputValue(e.target.value)}
-                  placeholder="Type a message..."
-                  disabled={sending}
+                  placeholder="Ask anything (e.g. explain the architecture, write a FastAPI route)..."
+                  disabled={streaming}
                   className="flex-1 bg-slate-900 border border-slate-800 rounded-lg px-4 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition-colors disabled:opacity-50"
                 />
-                <button
-                  type="submit"
-                  disabled={!inputValue.trim() || sending}
-                  className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5 disabled:opacity-40 cursor-pointer shadow-sm"
-                >
-                  {sending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
-                  <span>Send</span>
-                </button>
+                {streaming ? (
+                  <button
+                    type="button"
+                    onClick={handleStopGeneration}
+                    className="px-4 py-2.5 bg-rose-600 hover:bg-rose-500 text-white rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5 cursor-pointer shadow-sm"
+                  >
+                    <Square className="h-3 w-3 fill-white" />
+                    <span>Stop</span>
+                  </button>
+                ) : (
+                  <button
+                    type="submit"
+                    disabled={!inputValue.trim()}
+                    className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5 disabled:opacity-40 cursor-pointer shadow-sm"
+                  >
+                    <Send className="h-3.5 w-3.5" />
+                    <span>Send</span>
+                  </button>
+                )}
               </form>
             </div>
           </>

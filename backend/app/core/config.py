@@ -1,5 +1,5 @@
 """Application configuration using Pydantic Settings."""
-from typing import List, Union
+from typing import List, Union, Optional
 from pydantic import AnyHttpUrl, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -35,6 +35,14 @@ class Settings(BaseSettings):
     # Database configuration (Neon PostgreSQL or local)
     DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/personal_ai_core"
     DATABASE_CONNECT_TIMEOUT_SECONDS: int = 5
+
+    # AI & LLM Provider Configuration
+    GROQ_API_KEY: Optional[str] = None
+    OPENAI_API_KEY: Optional[str] = None
+    DEFAULT_LLM_PROVIDER: str = "groq"
+    DEFAULT_MODEL_NAME: str = "llama-3.3-70b-versatile"
+    MAX_CONTEXT_MESSAGES: int = 20
+    MAX_TOKENS_PER_REQUEST: int = 4096
 
     # Security placeholders for Phase 1
     SECRET_KEY: str = "insecure-secret-key-change-in-production-for-phase-1"
