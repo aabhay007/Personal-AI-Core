@@ -58,6 +58,7 @@ yarn-error.log*
 # Database & local storage
 *.sqlite
 *.sqlite3
+*.db
 storage/
 uploads/
 

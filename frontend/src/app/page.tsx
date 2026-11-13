@@ -47,9 +47,21 @@ export default function Home() {
             </div>
           </div>
           <div className="flex items-center gap-3">
+            <a
+              href="/chat"
+              className="px-3 py-1.5 rounded-lg text-xs font-medium bg-indigo-600 hover:bg-indigo-500 text-white transition-colors shadow-sm"
+            >
+              Open Chat
+            </a>
+            <a
+              href="/login"
+              className="px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition-colors"
+            >
+              Sign In
+            </a>
             <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-              Phase 0 Active
+              Phase 1 Active
             </span>
           </div>
         </div>
