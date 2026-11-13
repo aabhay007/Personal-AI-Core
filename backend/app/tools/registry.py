@@ -11,6 +11,8 @@ from app.tools.base import BaseTool
 from app.tools.calculator import CalculatorTool
 from app.tools.datetime_tool import DateTimeTool
 from app.tools.document_search import DocumentSearchTool
+from app.tools.db_metadata_inspector import DatabaseMetadataInspectorTool
+from app.tools.db_query_tool import DatabaseQueryTool
 from app.models.tool import ToolExecution
 
 logger = logging.getLogger(__name__)
@@ -25,6 +27,8 @@ class ToolRegistry:
         self.register(CalculatorTool())
         self.register(DateTimeTool())
         self.register(DocumentSearchTool())
+        self.register(DatabaseMetadataInspectorTool())
+        self.register(DatabaseQueryTool())
 
     def register(self, tool: BaseTool) -> None:
         """Register a tool instance in the registry."""
@@ -65,14 +69,14 @@ class ToolRegistry:
         result = None
 
         # Automatically supply contextual workspace_id if tool expects it and it's missing
-        if name == "document_search" and workspace_id and not arguments.get("workspace_id"):
+        if name in ("document_search", "db_metadata_inspector", "db_query_tool") and workspace_id and not arguments.get("workspace_id"):
             arguments["workspace_id"] = str(workspace_id)
 
         try:
             # 1. Strict Pydantic argument validation
             validated_args = tool.args_schema(**arguments)
             exec_kwargs = validated_args.model_dump()
-            if name == "document_search":
+            if name in ("document_search", "db_metadata_inspector", "db_query_tool"):
                 exec_kwargs["db"] = db
 
             # 2. Execute with strict timeout enforcement

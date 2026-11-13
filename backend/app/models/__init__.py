@@ -4,6 +4,7 @@ from app.models.workspace import Workspace, WorkspaceMember
 from app.models.conversation import Conversation, Message
 from app.models.tool import Tool, ToolExecution
 from app.models.document import Document, DocumentChunk
+from app.models.integration import Integration
 
 __all__ = [
     "User",
@@ -16,4 +17,5 @@ __all__ = [
     "ToolExecution",
     "Document",
     "DocumentChunk",
+    "Integration",
 ]
