@@ -13,6 +13,9 @@ from app.tools.datetime_tool import DateTimeTool
 from app.tools.document_search import DocumentSearchTool
 from app.tools.db_metadata_inspector import DatabaseMetadataInspectorTool
 from app.tools.db_query_tool import DatabaseQueryTool
+from app.tools.repo_read_file import RepoReadFileTool
+from app.tools.repo_code_search import RepoCodeSearchTool
+from app.tools.repo_file_tree import RepoFileTreeTool
 from app.models.tool import ToolExecution
 
 logger = logging.getLogger(__name__)
@@ -29,6 +32,9 @@ class ToolRegistry:
         self.register(DocumentSearchTool())
         self.register(DatabaseMetadataInspectorTool())
         self.register(DatabaseQueryTool())
+        self.register(RepoReadFileTool())
+        self.register(RepoCodeSearchTool())
+        self.register(RepoFileTreeTool())
 
     def register(self, tool: BaseTool) -> None:
         """Register a tool instance in the registry."""
@@ -68,15 +74,23 @@ class ToolRegistry:
         error_message = None
         result = None
 
+        WORKSPACE_AWARE = (
+            "document_search",
+            "db_metadata_inspector",
+            "db_query_tool",
+            "repo_read_file",
+            "repo_code_search",
+            "repo_file_tree"
+        )
         # Automatically supply contextual workspace_id if tool expects it and it's missing
-        if name in ("document_search", "db_metadata_inspector", "db_query_tool") and workspace_id and not arguments.get("workspace_id"):
+        if name in WORKSPACE_AWARE and workspace_id and not arguments.get("workspace_id"):
             arguments["workspace_id"] = str(workspace_id)
 
         try:
             # 1. Strict Pydantic argument validation
             validated_args = tool.args_schema(**arguments)
             exec_kwargs = validated_args.model_dump()
-            if name in ("document_search", "db_metadata_inspector", "db_query_tool"):
+            if name in WORKSPACE_AWARE:
                 exec_kwargs["db"] = db
 
             # 2. Execute with strict timeout enforcement
