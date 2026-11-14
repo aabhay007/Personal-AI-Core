@@ -449,7 +449,7 @@ export default function ChatPage() {
                     Workspace: <strong className="text-slate-300 font-medium">{activeWorkspace?.name}</strong>
                   </span>
                   <span className="text-slate-600">•</span>
-                  <span className="text-[11px] text-indigo-400 font-medium">Tools Enabled (Calculator, DateTime)</span>
+                  <span className="text-[11px] text-indigo-400 font-medium">Tools Enabled (Docs RAG, Repos, DB, Calculator, Time)</span>
                 </div>
               </div>
 
@@ -494,8 +494,9 @@ export default function ChatPage() {
                   <Bot className="h-10 w-10 text-slate-600 mb-3" />
                   <p className="text-sm font-medium text-slate-300">Tool-Augmented AI Assistant</p>
                   <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
-                    Try asking: <code className="text-indigo-400">&quot;What is 45 * 128?&quot;</code> or{' '}
-                    <code className="text-indigo-400">&quot;What is the current time in Tokyo?&quot;</code>
+                    Try asking: <code className="text-indigo-400">&quot;Search my documents for...&quot;</code>,{' '}
+                    <code className="text-indigo-400">&quot;What is 45 * 128?&quot;</code>, or{' '}
+                    <code className="text-indigo-400">&quot;What time is it in Tokyo?&quot;</code>
                   </p>
                 </div>
               ) : (

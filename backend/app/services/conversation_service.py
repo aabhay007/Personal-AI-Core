@@ -71,7 +71,8 @@ class ConversationService:
     ) -> Conversation:
         """Fetch a conversation with its messages and enforce workspace isolation."""
         query = select(Conversation).options(
-            selectinload(Conversation.messages)
+            selectinload(Conversation.messages),
+            selectinload(Conversation.workspace)
         ).where(Conversation.id == conversation_id)
 
         result = await db.execute(query)

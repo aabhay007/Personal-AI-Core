@@ -5,11 +5,15 @@ import uuid
 from typing import AsyncGenerator, Optional, Dict, Any, List
 from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 from app.ai.providers.registry import get_llm_provider
 from app.ai.context.manager import ContextManager
 from app.ai.streaming.sse import format_sse_event
 from app.models.user import User
 from app.models.conversation import Message
+from app.models.document import Document
+from app.models.code_repository import CodeRepository
+from app.models.integration import Integration
 from app.services.conversation_service import ConversationService
 from app.schemas.conversation import MessageCreateRequest
 from app.tools.registry import tool_registry
@@ -44,13 +48,41 @@ class AIOrchestrator:
             # 1. Fetch conversation and enforce workspace isolation
             conv = await ConversationService.get_conversation(db, conversation_id, user)
 
+            # Query workspace context resources for grounded system prompt
+            doc_stmt = select(Document.filename).where(
+                Document.workspace_id == conv.workspace_id,
+                Document.processing_status == "completed"
+            )
+            doc_rows = (await db.execute(doc_stmt)).scalars().all()
+
+            repo_stmt = select(CodeRepository.name).where(
+                CodeRepository.workspace_id == conv.workspace_id
+            )
+            repo_rows = (await db.execute(repo_stmt)).scalars().all()
+
+            int_stmt = select(Integration.name).where(
+                Integration.workspace_id == conv.workspace_id
+            )
+            int_rows = (await db.execute(int_stmt)).scalars().all()
+
+            workspace_name = conv.workspace.name if getattr(conv, "workspace", None) else None
+            system_prompt = ContextManager.build_system_prompt(
+                workspace_name=workspace_name,
+                documents=list(doc_rows),
+                repositories=list(repo_rows),
+                integrations=list(int_rows)
+            )
+
             # 2. Persist user message to DB
             user_msg_req = MessageCreateRequest(role="user", content=user_prompt)
             await ConversationService.add_message(db, conversation_id, user, user_msg_req)
 
             # 3. Reload messages for context
             messages = await ConversationService.list_messages(db, conversation_id, user)
-            context_messages = ContextManager.build_messages_context(messages)
+            context_messages = ContextManager.build_messages_context(
+                messages,
+                system_prompt=system_prompt
+            )
 
             # 4. Resolve provider and model
             active_provider_name = provider_name or conv.model_provider or settings.DEFAULT_LLM_PROVIDER
@@ -116,6 +148,7 @@ class AIOrchestrator:
                 # If the model requested tool calls, execute them and continue the loop
                 if tool_calls_accumulator:
                     assistant_tool_calls = []
+                    tool_results_to_append = []
 
                     for idx, tc_info in sorted(tool_calls_accumulator.items()):
                         call_id = tc_info["id"]
@@ -157,26 +190,20 @@ class AIOrchestrator:
                             "result": execution_result
                         })
 
-                        # Append assistant message with tool_calls and tool result to context
-                        context_messages.append({
-                            "role": "assistant",
-                            "content": "".join(current_turn_content) or None,
-                            "tool_calls": [
-                                {
-                                    "id": call_id,
-                                    "type": "function",
-                                    "function": {
-                                        "name": tool_name,
-                                        "arguments": raw_args_str
-                                    }
-                                }
-                            ]
-                        })
-                        context_messages.append({
+                        tool_results_to_append.append({
                             "role": "tool",
                             "tool_call_id": call_id,
                             "content": json.dumps(execution_result)
                         })
+
+                    # Append single assistant message with all tool_calls to context
+                    context_messages.append({
+                        "role": "assistant",
+                        "content": "".join(current_turn_content) or None,
+                        "tool_calls": assistant_tool_calls
+                    })
+                    # Append all tool result messages
+                    context_messages.extend(tool_results_to_append)
 
                     # Continue loop to allow LLM to synthesize tool results
                     continue
