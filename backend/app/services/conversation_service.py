@@ -6,6 +6,7 @@ from sqlalchemy import select, delete
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exceptions import NotFoundError
+from app.core.config import settings
 from app.api.deps import verify_workspace_access
 from app.models.conversation import Conversation, Message
 from app.models.user import User
@@ -27,13 +28,19 @@ class ConversationService:
         # 1. Enforce workspace membership authorization
         await verify_workspace_access(req.workspace_id, user, db)
 
-        # 2. Create conversation
+        # 2. Resolve defaults safely
+        provider = req.model_provider or settings.DEFAULT_LLM_PROVIDER
+        model = req.model_name or settings.DEFAULT_MODEL_NAME
+        if provider == "groq" and model in ("llama-3.3-70b-versatile", "qwen3.8-27b", "qwen-3.8-27b"):
+            model = "qwen/qwen3.8-27b"
+
+        # 3. Create conversation
         conv = Conversation(
             workspace_id=req.workspace_id,
             user_id=user.id,
             title=req.title or "New Conversation",
-            model_provider=req.model_provider or "openai",
-            model_name=req.model_name or "gpt-4o"
+            model_provider=provider,
+            model_name=model
         )
         db.add(conv)
         await db.commit()
@@ -84,11 +91,18 @@ class ConversationService:
         user: User,
         req: ConversationUpdateRequest
     ) -> Conversation:
-        """Update conversation title within authorized workspace."""
+        """Update conversation attributes within authorized workspace."""
         conv = await ConversationService.get_conversation(db, conversation_id, user)
 
         if req.title is not None:
             conv.title = req.title
+        if req.model_provider is not None:
+            conv.model_provider = req.model_provider
+        if req.model_name is not None:
+            model = req.model_name
+            if conv.model_provider == "groq" and model in ("llama-3.3-70b-versatile", "qwen3.8-27b", "qwen-3.8-27b"):
+                model = "qwen/qwen3.8-27b"
+            conv.model_name = model
 
         await db.commit()
         await db.refresh(conv)

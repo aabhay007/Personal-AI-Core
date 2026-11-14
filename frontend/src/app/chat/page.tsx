@@ -43,6 +43,19 @@ const MODEL_OPTIONS = [
   { provider: 'openai', model: 'gpt-4o-mini', label: 'OpenAI: GPT-4o Mini' },
 ];
 
+const DEFAULT_MODEL_KEY = `${MODEL_OPTIONS[0].provider}:${MODEL_OPTIONS[0].model}`;
+
+function parseModelKey(key: string): { provider: string; model: string } {
+  const colonIndex = key.indexOf(':');
+  if (colonIndex === -1) {
+    return { provider: 'groq', model: key };
+  }
+  return {
+    provider: key.slice(0, colonIndex),
+    model: key.slice(colonIndex + 1),
+  };
+}
+
 interface ToolEventItem {
   tool_name: string;
   arguments?: any;
@@ -61,7 +74,7 @@ export default function ChatPage() {
   const [inputValue, setInputValue] = useState('');
   const [loading, setLoading] = useState(true);
   const [streaming, setStreaming] = useState(false);
-  const [selectedModelKey, setSelectedModelKey] = useState('groq:qwen3.8-27b');
+  const [selectedModelKey, setSelectedModelKey] = useState(DEFAULT_MODEL_KEY);
   const [streamError, setStreamError] = useState<string | null>(null);
   const [activeToolEvents, setActiveToolEvents] = useState<ToolEventItem[]>([]);
 
@@ -126,7 +139,26 @@ export default function ChatPage() {
       setActiveConversation(details);
       setMessages(details.messages || []);
       if (details.model_provider && details.model_name) {
-        setSelectedModelKey(`${details.model_provider}:${details.model_name}`);
+        let provider = details.model_provider;
+        let model = details.model_name;
+
+        // Normalize legacy or deprecated model names
+        if (model === 'llama-3.3-70b-versatile' || model === 'qwen3.8-27b' || model === 'qwen-3.8-27b') {
+          provider = 'groq';
+          model = 'qwen/qwen3.8-27b';
+        }
+
+        const exists = MODEL_OPTIONS.some(
+          (opt) => opt.provider === provider && opt.model === model
+        );
+
+        if (exists) {
+          setSelectedModelKey(`${provider}:${model}`);
+        } else {
+          setSelectedModelKey(DEFAULT_MODEL_KEY);
+        }
+      } else {
+        setSelectedModelKey(DEFAULT_MODEL_KEY);
       }
     } catch (err) {
       console.error('Failed to select conversation', err);
@@ -135,7 +167,7 @@ export default function ChatPage() {
 
   const handleNewConversation = async () => {
     if (!activeWorkspace) return;
-    const [provider, model] = selectedModelKey.split(':');
+    const { provider, model } = parseModelKey(selectedModelKey);
     try {
       const newConv = await createConversation(activeWorkspace.id, 'New Conversation', provider, model);
       setConversations([newConv, ...conversations]);
@@ -178,7 +210,7 @@ export default function ChatPage() {
     setStreaming(true);
     setActiveToolEvents([]);
 
-    const [provider, model] = selectedModelKey.split(':');
+    const { provider, model } = parseModelKey(selectedModelKey);
 
     // 1. Optimistically display user message
     const tempUserMsg: Message = {

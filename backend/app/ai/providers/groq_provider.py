@@ -7,9 +7,15 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
+GROQ_MODEL_ALIASES = {
+    "llama-3.3-70b-versatile": "qwen/qwen3.8-27b",
+    "qwen3.8-27b": "qwen/qwen3.8-27b",
+    "qwen-3.8-27b": "qwen/qwen3.8-27b",
+}
+
 
 class GroqProvider(LLMProvider):
-    """LLM Provider targeting Groq high-speed inference (Llama 3.3, Llama 3.1, Mixtral)."""
+    """LLM Provider targeting Groq high-speed inference (Qwen 3.8, Llama 3.1, Mixtral)."""
 
     def __init__(self, api_key: Optional[str] = None):
         self.api_key = api_key or settings.GROQ_API_KEY
@@ -24,6 +30,10 @@ class GroqProvider(LLMProvider):
     @property
     def default_model(self) -> str:
         return "qwen/qwen3.8-27b"
+
+    def normalize_model(self, model: Optional[str] = None) -> str:
+        target = model or self.default_model
+        return GROQ_MODEL_ALIASES.get(target, target)
 
     def _get_client(self) -> AsyncGroq:
         if not self.api_key:
@@ -43,7 +53,7 @@ class GroqProvider(LLMProvider):
         max_tokens: Optional[int] = None
     ) -> LLMResponse:
         client = self._get_client()
-        target_model = model or self.default_model
+        target_model = self.normalize_model(model)
 
         kwargs: Dict[str, Any] = {
             "model": target_model,
@@ -92,7 +102,7 @@ class GroqProvider(LLMProvider):
         max_tokens: Optional[int] = None
     ) -> AsyncGenerator[LLMStreamChunk, None]:
         client = self._get_client()
-        target_model = model or self.default_model
+        target_model = self.normalize_model(model)
 
         kwargs: Dict[str, Any] = {
             "model": target_model,

@@ -55,7 +55,14 @@ class AIOrchestrator:
             # 4. Resolve provider and model
             active_provider_name = provider_name or conv.model_provider or settings.DEFAULT_LLM_PROVIDER
             provider = get_llm_provider(active_provider_name)
-            active_model = model_name or conv.model_name or provider.default_model
+            raw_model = model_name or conv.model_name or provider.default_model
+            active_model = provider.normalize_model(raw_model) if hasattr(provider, "normalize_model") else raw_model
+
+            # Keep conversation synchronized if active provider or model changed
+            if conv.model_provider != active_provider_name or conv.model_name != active_model:
+                conv.model_provider = active_provider_name
+                conv.model_name = active_model
+                await db.commit()
 
             # Emit message_start event
             yield format_sse_event("message_start", {

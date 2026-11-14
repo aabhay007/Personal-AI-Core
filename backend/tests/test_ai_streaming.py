@@ -81,7 +81,7 @@ async def test_chat_stream_success_and_persistence(async_client: AsyncClient):
                 "conversation_id": conv_id,
                 "prompt": "Say hello to Groq!",
                 "provider": "groq",
-                "model": "qwen3.8-27b"
+                "model": "qwen/qwen3.8-27b"
             }
         )
         assert stream_res.status_code == 200

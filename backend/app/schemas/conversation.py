@@ -24,12 +24,14 @@ class MessageResponse(BaseModel):
 class ConversationCreateRequest(BaseModel):
     workspace_id: uuid.UUID
     title: Optional[str] = Field("New Conversation", max_length=255)
-    model_provider: Optional[str] = Field("openai", max_length=50)
-    model_name: Optional[str] = Field("gpt-4o", max_length=100)
+    model_provider: Optional[str] = Field(None, max_length=50)
+    model_name: Optional[str] = Field(None, max_length=100)
 
 
 class ConversationUpdateRequest(BaseModel):
     title: Optional[str] = Field(None, min_length=1, max_length=255)
+    model_provider: Optional[str] = Field(None, max_length=50)
+    model_name: Optional[str] = Field(None, max_length=100)
 
 
 class ConversationResponse(BaseModel):

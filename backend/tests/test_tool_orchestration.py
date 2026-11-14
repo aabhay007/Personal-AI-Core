@@ -74,7 +74,7 @@ async def test_multi_step_tool_orchestration_loop(
                 "conversation_id": conv_id,
                 "prompt": "What is 125 multiplied by 8?",
                 "provider": "groq",
-                "model": "qwen3.8-27b"
+                "model": "qwen/qwen3.8-27b"
             }
         )
         assert stream_res.status_code == 200
