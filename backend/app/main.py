@@ -15,6 +15,13 @@ from app.schemas.health import HealthResponse
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan context manager for startup and shutdown events."""
     setup_logging()
+    # Pre-warm embedding model to ensure immediate local availability
+    try:
+        from app.knowledge.embeddings import embedding_service
+        embedding_service.warmup()
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"Could not warm up embedding service at startup: {e}")
     yield
     # Graceful shutdown cleanup if needed
 
