@@ -52,6 +52,28 @@ def test_cosine_similarity():
     assert cosine_similarity(vec_a, vec_c) == 0.0
 
 
+def test_read_only_storage_and_cache_fallback(monkeypatch):
+    """Verify that embeddings cache and document storage fallback to tempdir in read-only filesystems."""
+    from unittest.mock import patch
+    from app.knowledge.embeddings import get_writable_cache_dir
+    from app.knowledge.storage import get_default_storage_dir, LocalStorageService
+
+    with patch("app.knowledge.embeddings.is_directory_writable", return_value=False):
+        cache_dir = get_writable_cache_dir()
+        assert "fastembed_cache" in cache_dir
+        assert any(tmp in cache_dir.lower() for tmp in ("tmp", "temp"))
+
+    with patch("app.knowledge.storage.is_storage_dir_writable", return_value=False):
+        storage_dir = get_default_storage_dir()
+        assert "personal_ai_storage" in storage_dir
+        assert any(tmp in storage_dir.lower() for tmp in ("tmp", "temp"))
+
+    # Test LocalStorageService initialization with unwritable directory
+    with patch("os.makedirs", side_effect=[OSError(30, "Read-only file system"), None]):
+        service = LocalStorageService(base_dir="/var/task/storage/documents")
+        assert any(tmp in service.base_dir.lower() for tmp in ("tmp", "temp"))
+
+
 @pytest.mark.asyncio
 async def test_document_upload_and_semantic_search_isolation(async_client: AsyncClient):
     """Verify document ingestion, semantic search, and cross-workspace isolation."""

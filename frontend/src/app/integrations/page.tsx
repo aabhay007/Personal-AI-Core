@@ -36,13 +36,21 @@ import {
   Layers,
   X,
 } from 'lucide-react';
+import { useToast } from '@/components/Toast';
+import { ConfirmModal } from '@/components/ConfirmModal';
+import { Skeleton } from '@/components/Skeleton';
 
 export default function IntegrationsPage() {
   const router = useRouter();
+  const toast = useToast();
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [activeWorkspace, setActiveWorkspace] = useState<Workspace | null>(null);
   const [integrations, setIntegrations] = useState<Integration[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Delete modal state
+  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Modal states
   const [isConnectOpen, setIsConnectOpen] = useState(false);
@@ -213,33 +221,42 @@ export default function IntegrationsPage() {
     }
   }
 
-  async function handleDelete(id: string) {
-    if (!confirm('Are you sure you want to disconnect this database integration?')) return;
+  async function handleConfirmDelete() {
+    if (!deleteTargetId) return;
+    setIsDeleting(true);
     try {
-      await deleteIntegration(id);
-      setIntegrations((prev) => prev.filter((i) => i.id !== id));
+      await deleteIntegration(deleteTargetId);
+      setIntegrations((prev) => prev.filter((i) => i.id !== deleteTargetId));
+      toast.success('Database integration removed');
     } catch (err) {
       console.error('Failed to delete integration', err);
+      toast.error('Failed to disconnect database');
+    } finally {
+      setIsDeleting(false);
+      setDeleteTargetId(null);
     }
   }
 
-  if (loading) {
-    return (
-      <div className="flex h-screen items-center justify-center bg-slate-950 text-slate-400">
-        <Loader2 className="h-6 w-6 animate-spin text-indigo-500 mr-2" />
-        <span>Loading integrations...</span>
-      </div>
-    );
-  }
-
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans">
+    <div className="min-h-screen bg-[#090a0f] text-zinc-100 flex flex-col font-sans">
+      {/* Delete Confirmation Modal */}
+      <ConfirmModal
+        isOpen={Boolean(deleteTargetId)}
+        title="Disconnect Database"
+        message="Are you sure you want to disconnect this database integration? The AI assistant will no longer be able to query its tables."
+        confirmText="Disconnect"
+        isDestructive={true}
+        isLoading={isDeleting}
+        onConfirm={handleConfirmDelete}
+        onCancel={() => setDeleteTargetId(null)}
+      />
+
       {/* Top Header */}
-      <header className="border-b border-slate-800 bg-slate-900/60 backdrop-blur px-6 py-4 flex items-center justify-between shrink-0">
+      <header className="border-b border-white/[0.08] bg-[#0d1017]/60 backdrop-blur px-6 py-4 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-4">
           <Link
             href="/chat"
-            className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors"
+            className="p-2 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] text-zinc-400 hover:text-white transition-colors"
           >
             <ArrowLeft className="h-4 w-4" />
           </Link>
@@ -304,15 +321,30 @@ export default function IntegrationsPage() {
 
         {/* Integrations List */}
         <div className="space-y-4">
-          <h2 className="text-sm font-semibold text-slate-200 uppercase tracking-wider">
+          <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-wider">
             Connected Databases ({integrations.length})
           </h2>
 
-          {integrations.length === 0 ? (
-            <div className="border border-dashed border-slate-800 rounded-xl p-12 text-center bg-slate-900/30">
-              <Server className="h-10 w-10 text-slate-600 mx-auto mb-3" />
-              <p className="text-sm text-slate-300 font-medium">No database connections configured</p>
-              <p className="text-xs text-slate-500 max-w-md mx-auto mt-1 mb-4">
+          {loading ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {Array.from({ length: 2 }).map((_, i) => (
+                <div key={i} className="bg-[#0d1017] border border-white/[0.08] rounded-2xl p-5 space-y-4">
+                  <div className="flex items-center gap-3">
+                    <Skeleton className="h-10 w-10 rounded-xl" />
+                    <div className="space-y-1.5 flex-1">
+                      <Skeleton className="h-4 w-32 rounded" />
+                      <Skeleton className="h-2.5 w-20 rounded" />
+                    </div>
+                  </div>
+                  <Skeleton className="h-16 w-full rounded-xl" />
+                </div>
+              ))}
+            </div>
+          ) : integrations.length === 0 ? (
+            <div className="border border-dashed border-white/[0.1] rounded-2xl p-12 text-center bg-white/[0.02]">
+              <Server className="h-10 w-10 text-zinc-600 mx-auto mb-3" />
+              <p className="text-sm text-zinc-300 font-medium">No database connections configured</p>
+              <p className="text-xs text-zinc-500 max-w-md mx-auto mt-1 mb-4">
                 Connect a PostgreSQL database (e.g. Neon, Supabase, AWS RDS) or a local SQLite file to enable safe data
                 retrieval tools for your AI assistant.
               </p>
@@ -321,7 +353,7 @@ export default function IntegrationsPage() {
                   resetForm();
                   setIsConnectOpen(true);
                 }}
-                className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-medium inline-flex items-center gap-1.5 transition-colors"
+                className="px-4 py-2 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white rounded-xl text-xs font-medium inline-flex items-center gap-1.5 transition-all shadow-md shadow-indigo-950/40 cursor-pointer"
               >
                 <Plus className="h-3.5 w-3.5" />
                 <span>Connect Database</span>
@@ -336,25 +368,25 @@ export default function IntegrationsPage() {
                 return (
                   <div
                     key={item.id}
-                    className="bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col justify-between hover:border-slate-700 transition-colors shadow-sm"
+                    className="bg-[#0d1017] border border-white/[0.08] rounded-2xl p-5 flex flex-col justify-between hover:border-white/[0.15] transition-all shadow-sm"
                   >
                     <div>
                       <div className="flex items-start justify-between gap-2 mb-2">
-                        <div className="flex items-center gap-2">
-                          <div className="h-8 w-8 rounded-lg bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400">
+                        <div className="flex items-center gap-2.5">
+                          <div className="h-9 w-9 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400">
                             <Database className="h-4 w-4" />
                           </div>
                           <div>
                             <h3 className="text-sm font-semibold text-white">{item.name}</h3>
-                            <span className="text-[10px] text-slate-400 font-mono uppercase bg-slate-800 px-1.5 py-0.5 rounded">
+                            <span className="text-[10px] text-zinc-400 font-mono uppercase bg-white/[0.05] px-2 py-0.5 rounded-full border border-white/[0.06]">
                               {item.integration_type}
                             </span>
                           </div>
                         </div>
 
                         <button
-                          onClick={() => handleDelete(item.id)}
-                          className="p-1.5 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
+                          onClick={() => setDeleteTargetId(item.id)}
+                          className="p-1.5 text-zinc-500 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors cursor-pointer"
                           title="Disconnect database"
                         >
                           <Trash2 className="h-4 w-4" />

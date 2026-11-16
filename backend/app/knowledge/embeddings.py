@@ -12,21 +12,66 @@ EMBEDDING_MODEL_NAME = "BAAI/bge-small-en-v1.5"
 EMBEDDING_DIMENSION = 384
 
 
+def is_directory_writable(path: str) -> bool:
+    """Test if a directory can be created and written to."""
+    try:
+        os.makedirs(path, exist_ok=True)
+        test_file = os.path.join(path, f".test_write_{os.getpid()}")
+        with open(test_file, "w") as f:
+            f.write("ok")
+        if os.path.exists(test_file):
+            os.remove(test_file)
+        return True
+    except (OSError, PermissionError):
+        return False
+
+
+def get_writable_cache_dir() -> str:
+    """Return a directory that is guaranteed to be writable for FastEmbed models.
+    
+    In read-only environments (such as AWS Lambda where /var/task is read-only,
+    or secured container runtimes), this gracefully falls back to /tmp.
+    """
+    # 1. Custom environment variable
+    custom_env = os.environ.get("FASTEMBED_CACHE_DIR")
+    if custom_env and is_directory_writable(custom_env):
+        return custom_env
+
+    # 2. Local repository storage (ideal for local development)
+    local_storage = os.path.abspath(
+        os.path.join(os.path.dirname(__file__), "..", "..", "storage", "fastembed_cache")
+    )
+    if is_directory_writable(local_storage):
+        return local_storage
+
+    # 3. Fallback to system temp directory (guaranteed writable in AWS Lambda / Vercel / Linux)
+    temp_dir = os.path.join(tempfile.gettempdir(), "fastembed_cache")
+    try:
+        os.makedirs(temp_dir, exist_ok=True)
+    except Exception as e:
+        logger.warning(f"Could not create temp fastembed cache dir '{temp_dir}': {e}")
+    return temp_dir
+
+
 def find_local_model_path() -> Optional[str]:
     """Search for locally cached ONNX model files across persistent storage and temp caches."""
     search_dirs = [
+        os.environ.get("FASTEMBED_CACHE_DIR"),
         os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "storage", "fastembed_cache")),
         os.path.join(tempfile.gettempdir(), "fastembed_cache"),
         os.path.expanduser("~/.cache/fastembed"),
         os.path.expanduser("~/.cache/huggingface"),
     ]
     for base in search_dirs:
-        if not os.path.isdir(base):
+        if not base or not os.path.isdir(base):
             continue
-        for root, _, files in os.walk(base):
-            if ("model_optimized.onnx" in files or "model.onnx" in files) and ("tokenizer.json" in files or "config.json" in files):
-                logger.info(f"Discovered local embedding model snapshot at: {root}")
-                return root
+        try:
+            for root, _, files in os.walk(base):
+                if ("model_optimized.onnx" in files or "model.onnx" in files) and ("tokenizer.json" in files or "config.json" in files):
+                    logger.info(f"Discovered local embedding model snapshot at: {root}")
+                    return root
+        except Exception as e:
+            logger.warning(f"Error inspecting search dir '{base}': {e}")
     return None
 
 
@@ -44,12 +89,9 @@ class EmbeddingService:
                 logger.info(f"Loading FastEmbed model from local path: '{local_path}'...")
                 self._model = TextEmbedding(model_name=self.model_name, specific_model_path=local_path)
             else:
-                persistent_cache = os.path.abspath(
-                    os.path.join(os.path.dirname(__file__), "..", "..", "storage", "fastembed_cache")
-                )
-                os.makedirs(persistent_cache, exist_ok=True)
-                logger.info(f"Loading FastEmbed model '{self.model_name}' with cache dir '{persistent_cache}'...")
-                self._model = TextEmbedding(model_name=self.model_name, cache_dir=persistent_cache)
+                cache_dir = get_writable_cache_dir()
+                logger.info(f"Loading FastEmbed model '{self.model_name}' with cache dir '{cache_dir}'...")
+                self._model = TextEmbedding(model_name=self.model_name, cache_dir=cache_dir)
         return self._model
 
     def warmup(self) -> None:

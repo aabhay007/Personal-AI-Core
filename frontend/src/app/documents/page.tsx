@@ -8,6 +8,9 @@ import { Workspace } from '@/types/auth';
 import { getMe } from '@/services/auth';
 import { listWorkspaces } from '@/services/conversations';
 import { listDocuments, uploadDocument, deleteDocument } from '@/services/documents';
+import { useToast } from '@/components/Toast';
+import { ConfirmModal } from '@/components/ConfirmModal';
+import { DocumentTableSkeleton } from '@/components/Skeleton';
 import {
   FileText,
   UploadCloud,
@@ -22,6 +25,8 @@ import {
 
 export default function DocumentsPage() {
   const router = useRouter();
+  const toast = useToast();
+
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [activeWorkspace, setActiveWorkspace] = useState<Workspace | null>(null);
   const [documents, setDocuments] = useState<DocumentItem[]>([]);
@@ -29,6 +34,10 @@ export default function DocumentsPage() {
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Delete modal state
+  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
     async function init() {
@@ -51,11 +60,15 @@ export default function DocumentsPage() {
   useEffect(() => {
     if (!activeWorkspace) return;
     async function loadDocs() {
+      setLoading(true);
       try {
         const list = await listDocuments(activeWorkspace!.id);
         setDocuments(list);
       } catch (err) {
         console.error('Failed to load documents', err);
+        toast.error('Failed to load documents');
+      } finally {
+        setLoading(false);
       }
     }
     loadDocs();
@@ -72,21 +85,30 @@ export default function DocumentsPage() {
     try {
       const doc = await uploadDocument(activeWorkspace.id, file);
       setDocuments((prev) => [doc, ...prev]);
+      toast.success(`Successfully uploaded "${file.name}"`);
     } catch (err: unknown) {
-      setUploadError(err instanceof Error ? err.message : 'Upload failed');
+      const msg = err instanceof Error ? err.message : 'Upload failed';
+      setUploadError(msg);
+      toast.error(msg);
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
 
-  const handleDelete = async (documentId: string) => {
-    if (!confirm('Are you sure you want to delete this document and its semantic index?')) return;
+  const handleConfirmDelete = async () => {
+    if (!deleteTargetId) return;
+    setIsDeleting(true);
     try {
-      await deleteDocument(documentId);
-      setDocuments((prev) => prev.filter((d) => d.id !== documentId));
+      await deleteDocument(deleteTargetId);
+      setDocuments((prev) => prev.filter((d) => d.id !== deleteTargetId));
+      toast.success('Document deleted');
     } catch (err) {
       console.error('Failed to delete document', err);
+      toast.error('Failed to delete document');
+    } finally {
+      setIsDeleting(false);
+      setDeleteTargetId(null);
     }
   };
 
@@ -96,36 +118,39 @@ export default function DocumentsPage() {
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center text-slate-400">
-        <Loader2 className="h-6 w-6 animate-spin text-indigo-500 mr-2" />
-        <span>Loading knowledge engine...</span>
-      </div>
-    );
-  }
-
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans">
+    <div className="min-h-screen bg-[#090a0f] text-zinc-100 flex flex-col font-sans">
+      {/* Delete Confirmation Modal */}
+      <ConfirmModal
+        isOpen={Boolean(deleteTargetId)}
+        title="Delete Document"
+        message="Are you sure you want to delete this document? Its text chunks and semantic vector index will be permanently removed."
+        confirmText="Delete"
+        isDestructive={true}
+        isLoading={isDeleting}
+        onConfirm={handleConfirmDelete}
+        onCancel={() => setDeleteTargetId(null)}
+      />
+
       {/* Header */}
-      <header className="border-b border-slate-800 bg-slate-900/60 backdrop-blur px-6 py-4">
+      <header className="border-b border-white/[0.08] bg-[#0d1017]/60 backdrop-blur px-6 py-4">
         <div className="max-w-6xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
             <Link
               href="/chat"
-              className="p-1.5 text-slate-400 hover:text-slate-200 rounded-lg hover:bg-slate-800 transition-colors"
+              className="p-2 text-zinc-400 hover:text-white rounded-xl hover:bg-white/[0.05] transition-colors"
             >
               <ArrowLeft className="h-5 w-5" />
             </Link>
             <div>
-              <h1 className="text-lg font-semibold text-white">Knowledge Engine & RAG</h1>
-              <p className="text-xs text-slate-400">Upload documents for semantic vector search and source citations</p>
+              <h1 className="text-lg font-semibold text-white tracking-tight">Knowledge Engine & RAG</h1>
+              <p className="text-xs text-zinc-400">Upload documents for semantic vector search and source citations</p>
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
               <FileCheck className="h-3.5 w-3.5" />
-              Phase 4 Active
+              FastEmbed RAG Active
             </span>
           </div>
         </div>
@@ -134,12 +159,12 @@ export default function DocumentsPage() {
       {/* Main Content */}
       <main className="max-w-6xl mx-auto px-6 py-8 flex-1 w-full space-y-8">
         {/* Upload Zone Card */}
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-sm">
+        <div className="bg-[#0d1017] border border-white/[0.08] rounded-2xl p-6 shadow-sm">
           <div className="flex items-center justify-between mb-4">
             <div>
               <h2 className="text-base font-medium text-white">Ingest New Document</h2>
-              <p className="text-xs text-slate-400 mt-0.5">
-                Supported formats: <strong className="text-slate-300">PDF, TXT, Markdown, DOCX</strong>. Chunked and indexed with FastEmbed.
+              <p className="text-xs text-zinc-400 mt-0.5">
+                Supported formats: <strong className="text-zinc-200">PDF, TXT, Markdown, DOCX</strong>. Chunked and indexed with dense vectors.
               </p>
             </div>
             {workspaces.length > 1 && (
@@ -149,7 +174,7 @@ export default function DocumentsPage() {
                   const ws = workspaces.find((w) => w.id === e.target.value);
                   if (ws) setActiveWorkspace(ws);
                 }}
-                className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-indigo-500 cursor-pointer"
+                className="bg-[#131722] border border-white/[0.08] rounded-xl px-3 py-1.5 text-xs text-zinc-300 focus:outline-none focus:border-indigo-500 cursor-pointer shadow-sm"
               >
                 {workspaces.map((ws) => (
                   <option key={ws.id} value={ws.id}>
@@ -161,7 +186,7 @@ export default function DocumentsPage() {
           </div>
 
           {uploadError && (
-            <div className="mb-4 p-3 rounded-lg bg-rose-950/40 border border-rose-800/60 text-xs text-rose-300 flex items-center gap-2">
+            <div className="mb-4 p-3 rounded-xl bg-rose-950/40 border border-rose-800/40 text-xs text-rose-300 flex items-center gap-2">
               <AlertCircle className="h-4 w-4 shrink-0 text-rose-400" />
               <span>{uploadError}</span>
             </div>
@@ -169,7 +194,7 @@ export default function DocumentsPage() {
 
           <div
             onClick={() => fileInputRef.current?.click()}
-            className="border-2 border-dashed border-slate-800 hover:border-indigo-500/60 rounded-xl p-8 text-center cursor-pointer transition-colors bg-slate-950/40 group"
+            className="border-2 border-dashed border-white/[0.1] hover:border-indigo-500/60 rounded-2xl p-8 text-center cursor-pointer transition-all bg-white/[0.02] hover:bg-white/[0.04] group"
           >
             <input
               type="file"
@@ -179,44 +204,49 @@ export default function DocumentsPage() {
               className="hidden"
             />
             <div className="flex flex-col items-center justify-center">
-              <div className="h-12 w-12 rounded-xl bg-indigo-600/10 group-hover:bg-indigo-600/20 text-indigo-400 flex items-center justify-center mb-3 transition-colors">
+              <div className="h-12 w-12 rounded-xl bg-indigo-600/10 group-hover:bg-indigo-600/20 text-indigo-400 flex items-center justify-center mb-3 transition-colors shadow-inner">
                 {uploading ? (
                   <Loader2 className="h-6 w-6 animate-spin text-indigo-400" />
                 ) : (
                   <UploadCloud className="h-6 w-6" />
                 )}
               </div>
-              <p className="text-sm font-medium text-slate-200">
-                {uploading ? 'Processing & embedding document...' : 'Click to select or drag and drop a file'}
+              <p className="text-sm font-medium text-zinc-200">
+                {uploading ? 'Processing, chunking & embedding document...' : 'Click to select or drag and drop a file'}
               </p>
-              <p className="text-xs text-slate-500 mt-1">Automatic recursive chunking and 384-dim dense vector generation</p>
+              <p className="text-xs text-zinc-500 mt-1">Automatic recursive chunking and 384-dim dense vector generation</p>
             </div>
           </div>
         </div>
 
         {/* Ingested Documents Table */}
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-sm">
-          <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between">
+        <div className="bg-[#0d1017] border border-white/[0.08] rounded-2xl overflow-hidden shadow-sm">
+          <div className="px-6 py-4 border-b border-white/[0.08] flex items-center justify-between">
             <h3 className="text-sm font-semibold text-white">Indexed Documents ({documents.length})</h3>
-            <span className="text-xs text-slate-500 font-mono">Workspace: {activeWorkspace?.name}</span>
+            <span className="text-xs text-zinc-400 font-mono">Workspace: {activeWorkspace?.name || 'Default'}</span>
           </div>
 
-          {documents.length === 0 ? (
-            <div className="py-12 text-center text-slate-500 text-xs">
-              <FileText className="h-8 w-8 mx-auto text-slate-700 mb-2" />
-              No documents uploaded to this workspace yet. Upload one above to enable RAG in chat!
+          {loading ? (
+            <div className="p-6">
+              <DocumentTableSkeleton rows={3} />
+            </div>
+          ) : documents.length === 0 ? (
+            <div className="py-14 text-center text-zinc-500 text-xs">
+              <FileText className="h-9 w-9 mx-auto text-zinc-700 mb-2.5" />
+              <p className="text-zinc-400 font-medium">No documents uploaded to this workspace yet</p>
+              <p className="text-zinc-600 mt-1">Upload a PDF or TXT file above to enable semantic search in chat.</p>
             </div>
           ) : (
-            <div className="divide-y divide-slate-800/80">
+            <div className="divide-y divide-white/[0.06]">
               {documents.map((doc) => (
-                <div key={doc.id} className="px-6 py-3.5 flex items-center justify-between hover:bg-slate-800/30 transition-colors">
-                  <div className="flex items-center gap-3 truncate mr-4">
-                    <div className="h-8 w-8 rounded-lg bg-slate-800 flex items-center justify-center text-slate-400 shrink-0">
-                      <FileText className="h-4 w-4" />
+                <div key={doc.id} className="px-6 py-4 flex items-center justify-between hover:bg-white/[0.02] transition-colors">
+                  <div className="flex items-center gap-3.5 truncate mr-4">
+                    <div className="h-9 w-9 rounded-xl bg-white/[0.04] border border-white/[0.08] flex items-center justify-center text-zinc-400 shrink-0">
+                      <FileText className="h-4 w-4 text-indigo-400" />
                     </div>
                     <div className="truncate">
                       <p className="text-xs font-medium text-white truncate">{doc.filename}</p>
-                      <div className="flex items-center gap-2 text-[10px] text-slate-500 mt-0.5">
+                      <div className="flex items-center gap-2 text-[10px] text-zinc-400 mt-0.5">
                         <span>{formatFileSize(doc.file_size)}</span>
                         <span>•</span>
                         <span>{new Date(doc.created_at).toLocaleDateString()}</span>
@@ -226,22 +256,22 @@ export default function DocumentsPage() {
 
                   <div className="flex items-center gap-4 shrink-0">
                     {doc.processing_status === 'completed' ? (
-                      <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                      <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/20">
                         <CheckCircle2 className="h-3 w-3" /> Indexed
                       </span>
                     ) : doc.processing_status === 'processing' ? (
-                      <span className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
+                      <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-amber-400 bg-amber-500/10 px-2.5 py-1 rounded-full border border-amber-500/20">
                         <Clock className="h-3 w-3 animate-spin" /> Processing
                       </span>
                     ) : (
-                      <span className="inline-flex items-center gap-1 text-[11px] font-medium text-rose-400 bg-rose-500/10 px-2 py-0.5 rounded border border-rose-500/20">
+                      <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-rose-400 bg-rose-500/10 px-2.5 py-1 rounded-full border border-rose-500/20">
                         <AlertCircle className="h-3 w-3" /> Failed
                       </span>
                     )}
 
                     <button
-                      onClick={() => handleDelete(doc.id)}
-                      className="p-1.5 text-slate-400 hover:text-rose-400 rounded-md hover:bg-slate-800 transition-colors cursor-pointer"
+                      onClick={() => setDeleteTargetId(doc.id)}
+                      className="p-1.5 text-zinc-400 hover:text-rose-400 rounded-lg hover:bg-white/[0.05] transition-colors cursor-pointer"
                       title="Delete document"
                     >
                       <Trash2 className="h-4 w-4" />

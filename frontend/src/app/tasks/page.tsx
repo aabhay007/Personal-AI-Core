@@ -15,6 +15,8 @@ import {
   approveStep,
   rejectStep,
 } from '@/services/tasks';
+import { useToast } from '@/components/Toast';
+import { TaskCardSkeleton, Skeleton } from '@/components/Skeleton';
 import {
   Workflow,
   Plus,
@@ -37,11 +39,15 @@ import {
 
 export default function TasksPage() {
   const router = useRouter();
+  const toast = useToast();
+
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [activeWorkspace, setActiveWorkspace] = useState<Workspace | null>(null);
   const [tasks, setTasks] = useState<AgentTask[]>([]);
   const [selectedTask, setSelectedTask] = useState<AgentTask | null>(null);
   const [loading, setLoading] = useState(true);
+  const [taskDetailsLoading, setTaskDetailsLoading] = useState(false);
+  const [loadingTaskId, setLoadingTaskId] = useState<string | null>(null);
 
   // Execution states
   const [runningTaskId, setRunningTaskId] = useState<string | null>(null);
@@ -49,7 +55,11 @@ export default function TasksPage() {
   const [rejectingStepId, setRejectingStepId] = useState<string | null>(null);
   const [expandedSteps, setExpandedSteps] = useState<Record<string, boolean>>({});
 
-  // Modal states
+  // Reject modal state (replaces window.prompt)
+  const [rejectStepData, setRejectStepData] = useState<{ taskId: string; stepId: string } | null>(null);
+  const [rejectReason, setRejectReason] = useState('Security policy violation or unverified action');
+
+  // Create Task modal state
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [taskTitle, setTaskTitle] = useState('');
   const [taskGoal, setTaskGoal] = useState('');
@@ -89,15 +99,22 @@ export default function TasksPage() {
       }
     } catch (err) {
       console.error('Failed to load tasks', err);
+      toast.error('Failed to load tasks');
     }
   }
 
   async function selectTask(taskId: string) {
+    setTaskDetailsLoading(true);
+    setLoadingTaskId(taskId);
     try {
       const details = await getTask(taskId);
       setSelectedTask(details);
     } catch (err) {
       console.error('Failed to get task', err);
+      toast.error('Failed to load task details');
+    } finally {
+      setTaskDetailsLoading(false);
+      setLoadingTaskId(null);
     }
   }
 
@@ -107,8 +124,10 @@ export default function TasksPage() {
       const updated = await runTask(taskId);
       setSelectedTask(updated);
       await loadTasks();
+      toast.success('Task execution updated');
     } catch (err) {
       console.error('Task execution failed', err);
+      toast.error('Task execution failed');
     } finally {
       setRunningTaskId(null);
     }
@@ -120,23 +139,27 @@ export default function TasksPage() {
       const updated = await approveStep(taskId, stepId);
       setSelectedTask(updated);
       await loadTasks();
+      toast.success('Step approved successfully');
     } catch (err) {
       console.error('Approval failed', err);
+      toast.error('Failed to approve step');
     } finally {
       setApprovingStepId(null);
     }
   }
 
-  async function handleRejectStep(taskId: string, stepId: string) {
-    const reason = prompt('Please specify a rejection reason:', 'Security policy rejection');
-    if (!reason) return;
-    setRejectingStepId(stepId);
+  async function handleConfirmReject() {
+    if (!rejectStepData) return;
+    setRejectingStepId(rejectStepData.stepId);
     try {
-      const updated = await rejectStep(taskId, stepId, reason);
+      const updated = await rejectStep(rejectStepData.taskId, rejectStepData.stepId, rejectReason);
       setSelectedTask(updated);
       await loadTasks();
+      toast.success('Step rejected');
+      setRejectStepData(null);
     } catch (err) {
       console.error('Rejection failed', err);
+      toast.error('Failed to reject step');
     } finally {
       setRejectingStepId(null);
     }
@@ -158,93 +181,84 @@ export default function TasksPage() {
       setIsModalOpen(false);
       setTaskTitle('');
       setTaskGoal('');
+      toast.success(`Autonomous task "${created.title}" created`);
       await loadTasks();
       setSelectedTask(created);
     } catch (err: unknown) {
-      setCreateError(err instanceof Error ? err.message : 'Failed to create task');
+      const msg = err instanceof Error ? err.message : 'Failed to create task';
+      setCreateError(msg);
+      toast.error(msg);
     } finally {
       setCreating(false);
     }
   }
 
   function toggleStepExpand(stepId: string) {
-    setExpandedSteps((prev) => ({ ...prev, [stepId]: !prev[stepId] }));
+    setExpandedSteps((prev) => ({
+      ...prev,
+      [stepId]: !prev[stepId],
+    }));
   }
 
-  function getStatusBadge(status: string) {
+  const getStatusBadge = (status: string) => {
     switch (status) {
       case 'completed':
         return (
-          <span className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-            <CheckCircle2 className="h-3 w-3" />
-            Completed
+          <span className="inline-flex items-center gap-1 text-[10px] font-medium text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
+            <CheckCircle2 className="h-3 w-3" /> Completed
           </span>
         );
       case 'running':
         return (
-          <span className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
-            <Loader2 className="h-3 w-3 animate-spin" />
-            Running
+          <span className="inline-flex items-center gap-1 text-[10px] font-medium text-indigo-400 bg-indigo-500/10 px-2 py-0.5 rounded-full border border-indigo-500/20">
+            <Loader2 className="h-3 w-3 animate-spin" /> Running
           </span>
         );
       case 'waiting_approval':
         return (
-          <span className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20 animate-pulse">
-            <ShieldAlert className="h-3 w-3" />
-            Needs Approval
+          <span className="inline-flex items-center gap-1 text-[10px] font-medium text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20">
+            <ShieldAlert className="h-3 w-3" /> Awaiting Approval
           </span>
         );
       case 'failed':
         return (
-          <span className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-red-500/10 text-red-400 border border-red-500/20">
-            <AlertCircle className="h-3 w-3" />
-            Failed
+          <span className="inline-flex items-center gap-1 text-[10px] font-medium text-rose-400 bg-rose-500/10 px-2 py-0.5 rounded-full border border-rose-500/20">
+            <AlertCircle className="h-3 w-3" /> Failed
           </span>
         );
-      case 'cancelled':
+      case 'rejected':
         return (
-          <span className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700">
-            <X className="h-3 w-3" />
-            Cancelled
+          <span className="inline-flex items-center gap-1 text-[10px] font-medium text-rose-400 bg-rose-500/10 px-2 py-0.5 rounded-full border border-rose-500/20">
+            <X className="h-3 w-3" /> Rejected
           </span>
         );
       default:
         return (
-          <span className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700">
-            <Clock className="h-3 w-3" />
-            Pending
+          <span className="inline-flex items-center gap-1 text-[10px] font-medium text-zinc-400 bg-white/[0.05] px-2 py-0.5 rounded-full border border-white/[0.06]">
+            <Clock className="h-3 w-3" /> Pending
           </span>
         );
     }
-  }
-
-  if (loading) {
-    return (
-      <div className="flex h-screen items-center justify-center bg-slate-950 text-slate-400">
-        <Loader2 className="h-6 w-6 animate-spin text-indigo-500 mr-2" />
-        <span>Loading autonomous tasks...</span>
-      </div>
-    );
-  }
+  };
 
   return (
-    <div className="h-screen bg-slate-950 text-slate-100 flex flex-col font-sans overflow-hidden">
+    <div className="h-screen bg-[#090a0f] text-zinc-100 flex flex-col font-sans overflow-hidden">
       {/* Top Header */}
-      <header className="border-b border-slate-800 bg-slate-900/60 backdrop-blur px-6 py-3 flex items-center justify-between shrink-0">
+      <header className="border-b border-white/[0.08] bg-[#0d1017]/60 backdrop-blur px-6 py-3 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-4">
           <Link
             href="/chat"
-            className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors"
+            className="p-2 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] text-zinc-400 hover:text-white transition-colors"
           >
             <ArrowLeft className="h-4 w-4" />
           </Link>
-          <div className="flex items-center gap-2">
-            <div className="p-2 bg-indigo-600/20 rounded-lg text-indigo-400">
-              <Workflow className="h-5 w-5" />
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 bg-indigo-600/10 border border-indigo-500/20 rounded-xl text-indigo-400">
+              <Workflow className="h-4 w-4" />
             </div>
             <div>
-              <h1 className="text-base font-semibold text-white">Autonomous Agent Tasks</h1>
-              <p className="text-xs text-slate-400">
+              <h1 className="text-base font-semibold text-white tracking-tight">Autonomous Agent Tasks</h1>
+              <p className="text-xs text-zinc-400">
                 Multi-step planning, state persistence, checkpoint retries, and Human-in-the-Loop approvals
               </p>
             </div>
@@ -259,7 +273,7 @@ export default function TasksPage() {
                 const ws = workspaces.find((w) => w.id === e.target.value);
                 if (ws) setActiveWorkspace(ws);
               }}
-              className="bg-slate-800 text-xs text-slate-200 border border-slate-700 rounded-lg px-2.5 py-1.5 focus:outline-none"
+              className="bg-[#131722] text-xs text-zinc-200 border border-white/[0.08] rounded-xl px-3 py-1.5 focus:outline-none focus:border-indigo-500 cursor-pointer shadow-sm"
             >
               {workspaces.map((w) => (
                 <option key={w.id} value={w.id}>
@@ -271,7 +285,7 @@ export default function TasksPage() {
 
           <button
             onClick={() => setIsModalOpen(true)}
-            className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-medium flex items-center gap-1.5 transition-colors shadow-sm"
+            className="px-3.5 py-1.5 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white rounded-xl text-xs font-medium flex items-center gap-1.5 transition-all shadow-sm shadow-indigo-950/40 cursor-pointer"
           >
             <Plus className="h-3.5 w-3.5" />
             <span>New Task</span>
@@ -282,26 +296,29 @@ export default function TasksPage() {
       {/* Main Workspace */}
       <div className="flex-1 flex overflow-hidden">
         {/* Left Sidebar: Task List */}
-        <div className="w-80 bg-slate-900 border-r border-slate-800 flex flex-col shrink-0">
-          <div className="p-3 border-b border-slate-800 flex items-center justify-between">
-            <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+        <div className="w-80 bg-[#0d1017] border-r border-white/[0.08] flex flex-col shrink-0">
+          <div className="p-3.5 border-b border-white/[0.08] flex items-center justify-between">
+            <span className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">
               Workflows ({tasks.length})
             </span>
             <button
               onClick={loadTasks}
-              className="p-1 hover:bg-slate-800 rounded text-slate-400 hover:text-slate-200"
+              className="p-1 hover:bg-white/[0.08] rounded-lg text-zinc-400 hover:text-zinc-200 transition-colors"
               title="Refresh list"
             >
               <RotateCw className="h-3.5 w-3.5" />
             </button>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-2 space-y-1.5">
-            {tasks.length === 0 ? (
-              <p className="text-xs text-slate-500 italic p-3">No autonomous tasks created yet</p>
+          <div className="flex-1 overflow-y-auto p-2.5 space-y-2">
+            {loading ? (
+              <TaskCardSkeleton count={3} />
+            ) : tasks.length === 0 ? (
+              <p className="text-xs text-zinc-500 italic p-4 text-center">No autonomous tasks created yet</p>
             ) : (
               tasks.map((t) => {
                 const isSelected = selectedTask?.id === t.id;
+                const isLoadingThis = taskDetailsLoading && loadingTaskId === t.id;
                 const completedSteps = t.steps?.filter((s) => s.status === 'completed').length || 0;
                 const totalSteps = t.steps?.length || 0;
 
@@ -309,20 +326,23 @@ export default function TasksPage() {
                   <div
                     key={t.id}
                     onClick={() => selectTask(t.id)}
-                    className={`p-3 rounded-xl cursor-pointer transition-colors border text-xs space-y-2 ${
+                    className={`p-3.5 rounded-xl cursor-pointer transition-all border text-xs space-y-2 ${
                       isSelected
-                        ? 'bg-indigo-600/15 border-indigo-500/40 text-white'
-                        : 'bg-slate-950/40 border-slate-800/80 text-slate-300 hover:bg-slate-850 hover:border-slate-700'
+                        ? 'bg-white/[0.08] border-l-2 border-indigo-500 border-white/[0.1] text-white shadow-sm'
+                        : 'bg-white/[0.02] border-white/[0.04] text-zinc-300 hover:bg-white/[0.05]'
                     }`}
                   >
                     <div className="flex items-start justify-between gap-2">
-                      <p className="font-semibold text-slate-100 line-clamp-1">{t.title}</p>
+                      <div className="flex items-center gap-2 truncate">
+                        {isLoadingThis && <Loader2 className="h-3 w-3 animate-spin text-indigo-400 shrink-0" />}
+                        <p className="font-semibold text-white line-clamp-1">{t.title}</p>
+                      </div>
                       {getStatusBadge(t.status)}
                     </div>
 
-                    <p className="text-[11px] text-slate-400 line-clamp-2">{t.goal}</p>
+                    <p className="text-[11px] text-zinc-400 line-clamp-2">{t.goal}</p>
 
-                    <div className="flex items-center justify-between text-[10px] text-slate-500 pt-1 border-t border-slate-800/60 font-mono">
+                    <div className="flex items-center justify-between text-[10px] text-zinc-500 pt-1.5 border-t border-white/[0.06] font-mono">
                       <span>
                         Steps: {completedSteps}/{totalSteps}
                       </span>
@@ -336,14 +356,22 @@ export default function TasksPage() {
         </div>
 
         {/* Center / Right Details: Task DAG and Execution Timeline */}
-        <div className="flex-1 flex flex-col overflow-hidden bg-slate-950">
-          {selectedTask ? (
+        <div className="flex-1 flex flex-col overflow-hidden bg-[#090a0f]">
+          {taskDetailsLoading ? (
+            <div className="p-8 space-y-6">
+              <Skeleton className="h-24 w-full rounded-2xl" />
+              <div className="space-y-3">
+                <Skeleton className="h-16 w-full rounded-xl" />
+                <Skeleton className="h-16 w-full rounded-xl" />
+              </div>
+            </div>
+          ) : selectedTask ? (
             <div className="flex-1 flex flex-col overflow-hidden">
               {/* Task Header */}
-              <div className="p-5 border-b border-slate-800 bg-slate-900/40 space-y-3">
+              <div className="p-6 border-b border-white/[0.08] bg-[#0d1017]/40 backdrop-blur space-y-3.5">
                 <div className="flex items-center justify-between gap-4">
                   <div className="flex items-center gap-3">
-                    <h2 className="text-lg font-bold text-white">{selectedTask.title}</h2>
+                    <h2 className="text-lg font-bold text-white tracking-tight">{selectedTask.title}</h2>
                     {getStatusBadge(selectedTask.status)}
                   </div>
 
@@ -352,7 +380,7 @@ export default function TasksPage() {
                       <button
                         onClick={() => handleRunTask(selectedTask.id)}
                         disabled={runningTaskId === selectedTask.id || selectedTask.status === 'waiting_approval'}
-                        className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-medium flex items-center gap-1.5 transition-colors disabled:opacity-50 shadow-sm"
+                        className="px-4 py-2 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white rounded-xl text-xs font-medium flex items-center gap-1.5 transition-all disabled:opacity-50 shadow-md shadow-indigo-950/40 cursor-pointer"
                       >
                         {runningTaskId === selectedTask.id ? (
                           <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -365,14 +393,14 @@ export default function TasksPage() {
                   </div>
                 </div>
 
-                <div className="text-xs text-slate-300 bg-slate-900/70 p-3 rounded-lg border border-slate-800">
-                  <span className="text-slate-500 font-medium">Objective: </span>
+                <div className="text-xs text-zinc-300 bg-white/[0.03] p-3.5 rounded-xl border border-white/[0.06]">
+                  <span className="text-zinc-500 font-medium">Objective: </span>
                   <span>{selectedTask.goal}</span>
                 </div>
 
                 {/* Result summary banner */}
                 {selectedTask.result_summary && (
-                  <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-lg text-xs text-emerald-300 flex items-start gap-2">
+                  <div className="p-3.5 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-xs text-emerald-300 flex items-start gap-2.5">
                     <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0 mt-0.5" />
                     <div>
                       <p className="font-semibold text-emerald-200">Execution Complete</p>
@@ -383,11 +411,11 @@ export default function TasksPage() {
 
                 {/* Error message banner */}
                 {selectedTask.error_message && (
-                  <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-xs text-red-300 flex items-start gap-2">
-                    <AlertCircle className="h-4 w-4 text-red-400 shrink-0 mt-0.5" />
+                  <div className="p-3.5 bg-rose-500/10 border border-rose-500/20 rounded-xl text-xs text-rose-300 flex items-start gap-2.5">
+                    <AlertCircle className="h-4 w-4 text-rose-400 shrink-0 mt-0.5" />
                     <div>
-                      <p className="font-semibold text-red-200">Execution Error</p>
-                      <p className="text-[11px] text-red-300/90 mt-0.5">{selectedTask.error_message}</p>
+                      <p className="font-semibold text-rose-200">Execution Error</p>
+                      <p className="text-[11px] text-rose-300/90 mt-0.5">{selectedTask.error_message}</p>
                     </div>
                   </div>
                 )}
@@ -395,7 +423,7 @@ export default function TasksPage() {
 
               {/* Step Pipeline List */}
               <div className="flex-1 overflow-y-auto p-6 space-y-4">
-                <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
+                <h3 className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-2">
                   Sequential Execution Steps ({selectedTask.steps?.length || 0})
                 </h3>
 
@@ -409,18 +437,18 @@ export default function TasksPage() {
                     return (
                       <div
                         key={step.id}
-                        className={`border rounded-xl transition-all ${
+                        className={`border rounded-2xl transition-all overflow-hidden ${
                           isWaiting
-                            ? 'bg-amber-950/20 border-amber-500/50 shadow-lg shadow-amber-950/30'
+                            ? 'bg-amber-950/20 border-amber-500/40 shadow-lg shadow-amber-950/20'
                             : step.status === 'completed'
-                            ? 'bg-slate-900/60 border-slate-800'
-                            : 'bg-slate-900/30 border-slate-800/80'
+                            ? 'bg-[#0d1017] border-white/[0.08]'
+                            : 'bg-white/[0.02] border-white/[0.04]'
                         }`}
                       >
                         {/* Step Card Header */}
                         <div className="p-4 flex items-start justify-between gap-3">
                           <div className="flex items-start gap-3">
-                            <div className="h-6 w-6 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center font-bold text-xs text-slate-300 shrink-0 mt-0.5">
+                            <div className="h-7 w-7 rounded-xl bg-white/[0.04] border border-white/[0.08] flex items-center justify-center font-bold text-xs text-zinc-300 shrink-0 mt-0.5">
                               {step.step_number}
                             </div>
                             <div>
@@ -428,72 +456,68 @@ export default function TasksPage() {
                                 <h4 className="text-sm font-semibold text-white">{step.name}</h4>
                                 {getStatusBadge(step.status)}
                                 {step.tool_name && (
-                                  <span className="font-mono text-[10px] bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 px-2 py-0.5 rounded">
+                                  <span className="font-mono text-[10px] bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 px-2 py-0.5 rounded-full">
                                     {step.tool_name}
                                   </span>
                                 )}
                               </div>
-                              <p className="text-xs text-slate-400 mt-1">{step.description}</p>
+                              <p className="text-xs text-zinc-400 mt-1">{step.description}</p>
                             </div>
                           </div>
 
                           <div className="flex items-center gap-2 shrink-0">
                             {step.execution_time_ms !== null && step.execution_time_ms !== undefined && (
-                              <span className="text-[10px] text-slate-500 font-mono">
+                              <span className="text-[10px] text-zinc-500 font-mono">
                                 {step.execution_time_ms}ms
                               </span>
                             )}
                             <button
                               onClick={() => toggleStepExpand(step.id)}
-                              className="p-1 hover:bg-slate-800 text-slate-400 hover:text-slate-200 rounded"
+                              className="p-1 hover:bg-white/[0.08] text-zinc-400 hover:text-white rounded-lg transition-colors cursor-pointer"
                             >
                               {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
                             </button>
                           </div>
                         </div>
 
-                        {/* Human Approval Required Action Banner */}
+                        {/* Interactive Approval Bar for Human-In-The-Loop */}
                         {isWaiting && (
-                          <div className="m-4 mt-0 p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl flex items-center justify-between gap-4">
-                            <div className="flex items-center gap-2">
+                          <div className="px-4 py-3 bg-amber-500/10 border-t border-amber-500/20 flex items-center justify-between gap-4">
+                            <div className="flex items-center gap-2 text-xs text-amber-300">
                               <ShieldAlert className="h-4 w-4 text-amber-400 shrink-0" />
-                              <div>
-                                <p className="text-xs font-semibold text-amber-200">
-                                  Human Approval Required (Sensitive Action)
-                                </p>
-                                <p className="text-[11px] text-amber-300/80">
-                                  This step requires your explicit authorization before the autonomous runner can execute it.
-                                </p>
-                              </div>
+                              <span>Critical tool approval required before execution can proceed.</span>
                             </div>
 
-                            <div className="flex items-center gap-2 shrink-0">
+                            <div className="flex items-center gap-2">
                               <button
-                                onClick={() => handleRejectStep(selectedTask.id, step.id)}
-                                disabled={isRejecting}
-                                className="px-3 py-1 bg-red-600/20 hover:bg-red-600/30 text-red-300 border border-red-500/30 rounded-lg text-xs font-medium transition-colors"
+                                onClick={() => setRejectStepData({ taskId: selectedTask.id, stepId: step.id })}
+                                disabled={isRejecting || isApproving}
+                                className="px-3 py-1.5 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-medium flex items-center gap-1 transition-all disabled:opacity-50 cursor-pointer shadow-sm"
                               >
-                                {isRejecting ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Reject'}
+                                {isRejecting ? <Loader2 className="h-3 w-3 animate-spin" /> : <X className="h-3 w-3" />}
+                                <span>Reject</span>
                               </button>
                               <button
                                 onClick={() => handleApproveStep(selectedTask.id, step.id)}
-                                disabled={isApproving}
-                                className="px-3.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-medium flex items-center gap-1 transition-colors"
+                                disabled={isApproving || isRejecting}
+                                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-medium flex items-center gap-1 transition-all disabled:opacity-50 cursor-pointer shadow-sm"
                               >
                                 {isApproving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
-                                <span>Approve & Continue</span>
+                                <span>Approve</span>
                               </button>
                             </div>
                           </div>
                         )}
 
-                        {/* Expanded Step Details */}
+                        {/* Expandable Step Details */}
                         {isExpanded && (
-                          <div className="px-4 pb-4 pt-1 border-t border-slate-800/80 space-y-2 text-xs font-mono">
-                            {step.tool_arguments && Object.keys(step.tool_arguments).length > 0 && (
+                          <div className="p-4 border-t border-white/[0.06] bg-black/40 space-y-3 font-mono text-xs">
+                            {step.tool_arguments && (
                               <div>
-                                <p className="text-[11px] text-slate-500 font-sans mb-1">Tool Arguments:</p>
-                                <pre className="bg-slate-950 p-2.5 rounded-lg border border-slate-800 text-slate-300 overflow-x-auto text-[11px]">
+                                <span className="text-zinc-500 text-[10px] uppercase font-sans font-semibold block mb-1">
+                                  Tool Input Parameters
+                                </span>
+                                <pre className="bg-[#08090d] p-3 rounded-xl border border-white/[0.06] text-zinc-300 overflow-x-auto text-[11px]">
                                   {JSON.stringify(step.tool_arguments, null, 2)}
                                 </pre>
                               </div>
@@ -501,8 +525,10 @@ export default function TasksPage() {
 
                             {step.tool_result && (
                               <div>
-                                <p className="text-[11px] text-slate-500 font-sans mb-1">Execution Output:</p>
-                                <pre className="bg-slate-950 p-2.5 rounded-lg border border-slate-800 text-slate-300 overflow-x-auto text-[11px]">
+                                <span className="text-zinc-500 text-[10px] uppercase font-sans font-semibold block mb-1">
+                                  Execution Result
+                                </span>
+                                <pre className="bg-[#08090d] p-3 rounded-xl border border-white/[0.06] text-emerald-400 overflow-x-auto text-[11px]">
                                   {JSON.stringify(step.tool_result, null, 2)}
                                 </pre>
                               </div>
@@ -510,10 +536,12 @@ export default function TasksPage() {
 
                             {step.error_message && (
                               <div>
-                                <p className="text-[11px] text-red-400 font-sans mb-1">Step Error:</p>
-                                <pre className="bg-red-950/20 p-2.5 rounded-lg border border-red-500/20 text-red-300 overflow-x-auto text-[11px]">
+                                <span className="text-rose-500 text-[10px] uppercase font-sans font-semibold block mb-1">
+                                  Failure Trace
+                                </span>
+                                <div className="bg-rose-950/40 p-3 rounded-xl border border-rose-800/40 text-rose-300 font-sans text-xs">
                                   {step.error_message}
-                                </pre>
+                                </div>
                               </div>
                             )}
                           </div>
@@ -525,29 +553,75 @@ export default function TasksPage() {
               </div>
             </div>
           ) : (
-            <div className="flex-1 flex flex-col items-center justify-center text-slate-500 text-xs p-8 text-center">
-              <Workflow className="h-12 w-12 text-slate-700 mb-3" />
-              <p className="font-medium text-slate-400">No task selected</p>
-              <p className="text-slate-600 max-w-sm mt-1">
-                Select an autonomous workflow from the left sidebar or create a new goal.
+            <div className="flex-1 flex flex-col items-center justify-center text-zinc-500 text-xs p-8 text-center">
+              <Workflow className="h-12 w-12 text-zinc-700 mb-3" />
+              <p className="font-medium text-zinc-400">No task selected</p>
+              <p className="text-zinc-600 max-w-sm mt-1">
+                Select a task from the list or create a new autonomous workflow.
               </p>
             </div>
           )}
         </div>
       </div>
 
-      {/* New Task Modal */}
+      {/* Reject Step Modal (replacing window.prompt) */}
+      {rejectStepData && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-md overflow-hidden shadow-2xl p-6 space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="h-10 w-10 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 flex items-center justify-center shrink-0">
+                <ShieldAlert className="h-5 w-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-semibold text-white">Reject Execution Step</h3>
+                <p className="text-xs text-zinc-400 mt-1">
+                  Specify a reason for rejecting this step. The workflow execution will halt safely.
+                </p>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-zinc-300 mb-1.5">Rejection Reason</label>
+              <textarea
+                rows={3}
+                value={rejectReason}
+                onChange={(e) => setRejectReason(e.target.value)}
+                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-rose-500 font-sans"
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-zinc-800">
+              <button
+                type="button"
+                onClick={() => setRejectStepData(null)}
+                className="py-2 px-3.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-xl text-xs font-medium transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmReject}
+                className="py-2 px-4 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-medium transition-colors cursor-pointer shadow-md shadow-rose-950/40"
+              >
+                Confirm Rejection
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Create Task Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md overflow-hidden shadow-2xl flex flex-col">
-            <div className="p-4 border-b border-slate-800 flex items-center justify-between">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-md overflow-hidden shadow-2xl flex flex-col">
+            <div className="p-4 border-b border-zinc-800 flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <Sparkles className="h-4 w-4 text-indigo-400" />
+                <Workflow className="h-4 w-4 text-indigo-400" />
                 <h3 className="text-sm font-semibold text-white">Create Autonomous Task</h3>
               </div>
               <button
                 onClick={() => setIsModalOpen(false)}
-                className="text-slate-400 hover:text-slate-200 p-1 rounded-lg"
+                className="text-zinc-400 hover:text-zinc-200 p-1 rounded-lg"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -555,51 +629,51 @@ export default function TasksPage() {
 
             <form onSubmit={handleCreateTask} className="p-5 space-y-4">
               <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1">Task Title</label>
+                <label className="block text-xs font-medium text-zinc-300 mb-1">Task Title</label>
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Audit Database & Verify Invoices"
+                  placeholder="e.g. Audit Repository & Inspect DB Schema"
                   value={taskTitle}
                   onChange={(e) => setTaskTitle(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-indigo-500"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1">High-Level Objective / Goal</label>
+                <label className="block text-xs font-medium text-zinc-300 mb-1">Primary Goal / Objective</label>
                 <textarea
                   required
                   rows={4}
-                  placeholder="Describe what you want the AI agent to accomplish sequentially..."
+                  placeholder="Describe what the agent should accomplish across multiple steps..."
                   value={taskGoal}
                   onChange={(e) => setTaskGoal(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-indigo-500 leading-relaxed font-sans"
                 />
               </div>
 
               {createError && (
-                <div className="p-2.5 bg-red-500/10 border border-red-500/20 rounded-lg text-xs text-red-400 flex items-center gap-1.5">
+                <div className="p-2.5 bg-rose-500/10 border border-rose-500/20 rounded-xl text-xs text-rose-400 flex items-center gap-1.5">
                   <AlertCircle className="h-4 w-4 shrink-0" />
                   <span>{createError}</span>
                 </div>
               )}
 
-              <div className="pt-2 flex items-center justify-end gap-2 border-t border-slate-800">
+              <div className="pt-2 flex items-center justify-end gap-2.5 border-t border-zinc-800">
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
-                  className="py-1.5 px-3 bg-slate-800 hover:bg-slate-700 text-slate-400 rounded-lg text-xs font-medium transition-colors"
+                  className="py-2 px-3.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-xl text-xs font-medium transition-colors cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={creating}
-                  className="py-1.5 px-4 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-medium flex items-center gap-1.5 transition-colors disabled:opacity-50"
+                  className="py-2 px-4 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white rounded-xl text-xs font-medium flex items-center gap-1.5 transition-all disabled:opacity-50 cursor-pointer shadow-md shadow-indigo-950/40"
                 >
                   {creating && <Loader2 className="h-3 w-3 animate-spin" />}
-                  <span>Generate Plan & Start</span>
+                  <span>Create Plan</span>
                 </button>
               </div>
             </form>
