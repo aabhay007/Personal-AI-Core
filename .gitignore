@@ -59,8 +59,11 @@ yarn-error.log*
 *.sqlite
 *.sqlite3
 *.db
-storage/
+storage/documents/
+backend/storage/documents/
 uploads/
+!backend/storage/fastembed_cache/
+!backend/storage/fastembed_cache/**
 
 # OS & Editor
 .DS_Store

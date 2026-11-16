@@ -54,11 +54,16 @@ def get_writable_cache_dir() -> str:
 
 
 def find_local_model_path() -> Optional[str]:
-    """Search for locally cached ONNX model files across persistent storage and temp caches."""
+    """Search for locally cached ONNX model files across persistent storage, current working dir, and temp caches."""
     search_dirs = [
         os.environ.get("FASTEMBED_CACHE_DIR"),
         os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "storage", "fastembed_cache")),
+        os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "storage", "fastembed_cache")),
+        os.path.abspath(os.path.join(os.getcwd(), "storage", "fastembed_cache")),
+        os.path.abspath(os.path.join(os.getcwd(), "backend", "storage", "fastembed_cache")),
+        os.path.abspath(os.path.join(os.getcwd(), "..", "backend", "storage", "fastembed_cache")),
         os.path.join(tempfile.gettempdir(), "fastembed_cache"),
+        "/tmp/fastembed_cache",
         os.path.expanduser("~/.cache/fastembed"),
         os.path.expanduser("~/.cache/huggingface"),
     ]
